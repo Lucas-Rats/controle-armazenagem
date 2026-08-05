@@ -162,7 +162,7 @@ tr:hover td { background: #f8f9ff; }
     font-size: 0.85rem;
     background: white;
 }
-.filtros input { width: 180px; }
+.filtros input { width: 250px; }
 .filtros select { width: 140px; }
 form label {
     display: block;

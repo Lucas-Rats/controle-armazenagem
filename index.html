@@ -36,7 +36,6 @@
         </header>
 
         <main class="container">
-            <!-- Cards de resumo -->
             <section class="resumo" id="cardsResumo"></section>
 
             <div class="painel">
@@ -53,19 +52,20 @@
 
                     <!-- Produtos Base (admin) -->
                     <div class="cartao" id="blocoProdutosBase">
-                        <h2>Produtos Base (Códigos)</h2>
+                        <h2>Cadastrar Produto</h2>
                         <div style="display:flex;gap:10px;margin-bottom:10px;">
-                            <input type="text" id="novoCodigo" placeholder="Código do produto" style="flex:1;">
-                            <button id="btnAddCodigo" class="btn-principal" style="width:auto;">Adicionar Código</button>
+                            <input type="text" id="novoCodigoProduto" placeholder="Código" style="flex:1;">
+                            <input type="text" id="novoNomeProduto" placeholder="Nome do produto" style="flex:2;">
+                            <button id="btnAddProduto" class="btn-principal" style="width:auto;">Adicionar</button>
                         </div>
-                        <ul id="listaCodigos" style="list-style:none;padding:0;"></ul>
+                        <ul id="listaProdutos" style="list-style:none;padding:0;"></ul>
                     </div>
 
-                    <!-- Itens (Seriais) -->
+                    <!-- Tabela de itens -->
                     <div class="cartao">
                         <h2>Itens em Estoque</h2>
                         <div class="filtros">
-                            <input type="text" id="filtroSerial" placeholder="Buscar por Serial">
+                            <input type="text" id="filtroGeral" placeholder="Buscar por código, nome ou serial">
                             <select id="filtroPredio"><option value="">Todos os locais</option></select>
                             <select id="filtroStatus"><option value="disponivel">Disponíveis</option><option value="baixado">Baixados</option></select>
                             <span id="contagemResultados"></span>
@@ -73,7 +73,7 @@
                         <div class="tabela-scroll">
                             <table>
                                 <thead>
-                                    <tr><th>Serial</th><th>Código</th><th>Local</th><th id="colAcoes">Ações</th></tr>
+                                    <tr><th>Código</th><th>Produto</th><th>Serial</th><th>Local</th><th id="colAcoes">Ações</th></tr>
                                 </thead>
                                 <tbody id="corpoTabela"></tbody>
                             </table>
@@ -95,15 +95,15 @@
                 <!-- Formulários (admin) -->
                 <aside class="forms-bloco" id="blocoFormularios">
                     <div class="cartao">
-                        <h2>Cadastrar Serial</h2>
+                        <h2>Cadastrar Serial (Entrada)</h2>
                         <form id="formCadastroSerial" autocomplete="off">
-                            <label>Código do Produto *</label>
-                            <select id="cadCodigo" required></select>
+                            <label>Produto *</label>
+                            <select id="cadProduto" required></select>
                             <label>Número de Série *</label>
                             <input type="text" id="cadSerial" required>
-                            <label>Local *</label>
+                            <label>Local de armazenagem *</label>
                             <select id="cadPredio" required></select>
-                            <button type="submit" class="btn-principal">Cadastrar Serial</button>
+                            <button type="submit" class="btn-principal">Registrar Entrada</button>
                         </form>
                     </div>
                     <div class="cartao">

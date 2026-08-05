@@ -1,12 +1,11 @@
-// ==================== CONFIGURAÇÃO ====================
-const SENHA_ADMIN = 'haroldo07'; // Altere aqui se desejar
+const HASH_CORRETO = '73fdd166cd3efe591527028265ded0ba1b40b16d277ffb09db95b6c9701c4287';
 
 // ==================== ESTADO ====================
-const CHAVE = 'armazenagem_v8';
-let predios = [];           // { id, nome }
-let codigos = [];          // { id, codigo }
-let itens = [];            // { id, serial, codigoId, predioId, status: 'disponivel' | 'baixado' }
-let historico = [];        // { serial, tipo, predioOrigem, predioDestino, data }
+const CHAVE = 'armazenagem_v10';
+let predios = [];      // { id, nome }
+let produtos = [];     // { id, codigo, nome }
+let itens = [];        // { id, serial, produtoId, predioId, status: 'disponivel' | 'baixado' }
+let historico = [];    // { tipo, produtoCodigo, produtoNome, serial, predioOrigem, predioDestino, data }
 
 function gerarId() {
     return Date.now().toString(36) + Math.random().toString(36).substr(2, 4);
@@ -19,12 +18,11 @@ function carregarDados() {
         if (raw) {
             const data = JSON.parse(raw);
             predios = data.predios || [];
-            codigos = data.codigos || [];
+            produtos = data.produtos || [];
             itens = data.itens || [];
             historico = data.historico || [];
         }
     } catch (e) {}
-    // Dados padrão
     if (predios.length === 0) {
         predios = [
             { id: gerarId(), nome: 'Prédio 1' },
@@ -35,11 +33,21 @@ function carregarDados() {
 }
 
 function salvarDados() {
-    localStorage.setItem(CHAVE, JSON.stringify({ predios, codigos, itens, historico }));
+    localStorage.setItem(CHAVE, JSON.stringify({ predios, produtos, itens, historico }));
 }
 
-// ==================== AUTENTICAÇÃO ====================
+// ==================== AUTENTICAÇÃO COM HASH + SALT ====================
 let usuarioAtual = null;
+
+async function verificarSenha(senhaDigitada) {
+    const encoder = new TextEncoder();
+    const data = encoder.encode(SALT + senhaDigitada);
+    const hashBuffer = await crypto.subtle.digest('SHA-256', data);
+    const hashArray = Array.from(new Uint8Array(hashBuffer));
+    const hashHex = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+    return hashHex === HASH_CORRETO;
+}
+
 function mostrarLogin() {
     document.getElementById('telaLogin').style.display = 'flex';
     document.getElementById('appPrincipal').style.display = 'none';
@@ -49,6 +57,17 @@ function mostrarLogin() {
     sessionStorage.removeItem('usuario');
     usuarioAtual = null;
 }
+
+async function tentarLoginAdmin() {
+    const senha = document.getElementById('senhaAdmin').value;
+    if (await verificarSenha(senha)) {
+        entrarComo('admin');
+    } else {
+        document.getElementById('erroSenha').style.display = 'block';
+        document.getElementById('senhaAdmin').value = '';
+    }
+}
+
 function entrarComo(tipo) {
     usuarioAtual = tipo;
     sessionStorage.setItem('usuario', tipo);
@@ -58,6 +77,7 @@ function entrarComo(tipo) {
     atualizarTudo();
     atualizarData();
 }
+
 function aplicarPermissoes() {
     const admin = usuarioAtual === 'admin';
     document.getElementById('blocoGerenciarPredios').style.display = admin ? 'block' : 'none';
@@ -66,11 +86,10 @@ function aplicarPermissoes() {
     document.getElementById('btnImportar').style.display = admin ? 'inline-block' : 'none';
     document.getElementById('btnLimparHistorico').style.display = admin ? 'inline-block' : 'none';
     document.getElementById('colAcoes').style.display = admin ? 'table-cell' : 'none';
-    document.getElementById('nivelAcesso').textContent = admin ? 'Admin' : 'Cliente';
-    document.getElementById('nivelAcesso').style.background = admin ? '#0d904f' : '#1a73e8';
-    // Filtro de status: cliente vê apenas disponíveis
     document.getElementById('filtroStatus').style.display = admin ? 'inline-block' : 'none';
     if (!admin) document.getElementById('filtroStatus').value = 'disponivel';
+    document.getElementById('nivelAcesso').textContent = admin ? 'Admin' : 'Cliente';
+    document.getElementById('nivelAcesso').style.background = admin ? '#0d904f' : '#1a73e8';
 }
 
 // ==================== TOAST ====================
@@ -131,51 +150,54 @@ document.getElementById('btnAddPredio').addEventListener('click', () => {
     toast('Local adicionado', 'sucesso');
 });
 
-// ==================== CÓDIGOS DE PRODUTO ====================
-function renderizarCodigos() {
-    const lista = document.getElementById('listaCodigos');
+// ==================== PRODUTOS ====================
+function renderizarProdutos() {
+    const lista = document.getElementById('listaProdutos');
     if (usuarioAtual !== 'admin') return;
-    lista.innerHTML = codigos.map(c => `
+    lista.innerHTML = produtos.map(p => `
         <li style="display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:1px solid #eee;">
-            <span>${c.codigo}</span>
-            <button class="btn-remover excluir-codigo" data-id="${c.id}" style="margin-left:10px;">Excluir</button>
+            <span><strong>${p.codigo}</strong> - ${p.nome}</span>
+            <button class="btn-remover excluir-produto" data-id="${p.id}" style="margin-left:10px;">Excluir</button>
         </li>
     `).join('');
-    document.querySelectorAll('.excluir-codigo').forEach(btn => {
+    document.querySelectorAll('.excluir-produto').forEach(btn => {
         btn.addEventListener('click', () => {
-            if (itens.some(i => i.codigoId === btn.dataset.id && i.status === 'disponivel')) {
-                toast('Existem itens ativos desse código. Dê baixa antes.', 'erro');
+            if (itens.some(i => i.produtoId === btn.dataset.id && i.status === 'disponivel')) {
+                toast('Existem itens ativos desse produto. Dê baixa antes.', 'erro');
                 return;
             }
-            if (confirm('Excluir código?')) {
-                codigos = codigos.filter(c => c.id !== btn.dataset.id);
+            if (confirm('Excluir produto?')) {
+                produtos = produtos.filter(p => p.id !== btn.dataset.id);
                 salvarDados();
                 atualizarTudo();
-                toast('Código removido', 'sucesso');
+                toast('Produto removido', 'sucesso');
             }
         });
     });
 }
-document.getElementById('btnAddCodigo').addEventListener('click', () => {
+document.getElementById('btnAddProduto').addEventListener('click', () => {
     if (usuarioAtual !== 'admin') return;
-    const cod = document.getElementById('novoCodigo').value.trim().toUpperCase();
-    if (!cod) return toast('Digite o código', 'erro');
-    if (codigos.some(c => c.codigo === cod)) return toast('Código já existe', 'erro');
-    codigos.push({ id: gerarId(), codigo: cod });
+    const codigo = document.getElementById('novoCodigoProduto').value.trim().toUpperCase();
+    const nome = document.getElementById('novoNomeProduto').value.trim();
+    if (!codigo || !nome) return toast('Preencha código e nome', 'erro');
+    if (produtos.some(p => p.codigo === codigo)) return toast('Código já existe', 'erro');
+    produtos.push({ id: gerarId(), codigo, nome });
     salvarDados();
-    document.getElementById('novoCodigo').value = '';
+    document.getElementById('novoCodigoProduto').value = '';
+    document.getElementById('novoNomeProduto').value = '';
     atualizarTudo();
-    toast('Código adicionado', 'sucesso');
+    toast('Produto adicionado', 'sucesso');
 });
 
-function getCodigoNome(id) {
-    return codigos.find(c => c.id === id)?.codigo || '???';
+function getProdutoInfo(produtoId) {
+    const p = produtos.find(prod => prod.id === produtoId);
+    return p || { codigo: '???', nome: '???' };
 }
 function getPredioNome(id) {
     return predios.find(p => p.id === id)?.nome || '???';
 }
 
-// ==================== ITENS (SERIAL) ====================
+// ==================== ITENS (SERIAIS) ====================
 function atualizarResumo() {
     const container = document.getElementById('cardsResumo');
     const totais = {};
@@ -208,12 +230,20 @@ function atualizarSelects() {
     document.getElementById('transfOrigem').innerHTML = '<option value="">Origem...</option>' + optsPredios;
     document.getElementById('transfDestino').innerHTML = '<option value="">Destino...</option>' + optsPredios;
 
-    const optsCodigos = codigos.map(c => `<option value="${c.id}">${c.codigo}</option>`).join('');
-    document.getElementById('cadCodigo').innerHTML = '<option value="">Selecione...</option>' + optsCodigos;
+    const optsProdutos = produtos.map(p => `<option value="${p.id}">${p.codigo} - ${p.nome}</option>`).join('');
+    document.getElementById('cadProduto').innerHTML = '<option value="">Selecione...</option>' + optsProdutos;
+
+    // Preencher select de serial para transferência (apenas disponíveis)
+    const seriaisDisponiveis = itens.filter(i => i.status === 'disponivel');
+    const optsSeriais = seriaisDisponiveis.map(i => {
+        const prod = getProdutoInfo(i.produtoId);
+        return `<option value="${i.id}">${i.serial} (${prod.codigo} - ${getPredioNome(i.predioId)})</option>`;
+    }).join('');
+    document.getElementById('transfSerial').innerHTML = '<option value="">Selecione...</option>' + optsSeriais;
 }
 
 function renderizarTabela() {
-    const filtroSerial = document.getElementById('filtroSerial').value.trim().toLowerCase();
+    const termoBusca = document.getElementById('filtroGeral').value.trim().toLowerCase();
     const filtroPredio = document.getElementById('filtroPredio').value;
     const filtroStatus = document.getElementById('filtroStatus').value;
     const admin = usuarioAtual === 'admin';
@@ -222,37 +252,45 @@ function renderizarTabela() {
     let lista = itens.filter(i => {
         if (!admin && i.status !== 'disponivel') return false;
         if (admin && filtroStatus && i.status !== filtroStatus) return false;
-        if (!admin && i.status !== 'disponivel') return false;
-        const matchSerial = !filtroSerial || i.serial.toLowerCase().includes(filtroSerial);
         const matchPredio = !filtroPredio || i.predioId === filtroPredio;
-        return matchSerial && matchPredio;
+        // Busca por código, nome do produto ou serial
+        let matchTermo = true;
+        if (termoBusca) {
+            const prod = getProdutoInfo(i.produtoId);
+            matchTermo = prod.codigo.toLowerCase().includes(termoBusca) ||
+                        prod.nome.toLowerCase().includes(termoBusca) ||
+                        i.serial.toLowerCase().includes(termoBusca);
+        }
+        return matchPredio && matchTermo;
     });
 
     document.getElementById('contagemResultados').textContent = `${lista.length} item(ns)`;
     document.getElementById('colAcoes').style.display = admin ? 'table-cell' : 'none';
 
     if (lista.length === 0) {
-        const colspan = admin ? 4 : 3;
+        const colspan = admin ? 5 : 4;
         tbody.innerHTML = `<tr><td colspan="${colspan}" class="vazio">Nenhum item encontrado.</td></tr>`;
         return;
     }
 
     tbody.innerHTML = lista.map(i => {
+        const prod = getProdutoInfo(i.produtoId);
         const statusClass = i.status === 'disponivel' ? 'status-disponivel' : 'status-baixado';
         let acoesHtml = '';
         if (admin && i.status === 'disponivel') {
             acoesHtml = `
                 <td class="acoes">
-                    <button class="btn-baixa" data-id="${i.id}" data-acao="baixa">Baixa</button>
-                    <button class="btn-transferir" data-id="${i.id}" data-acao="transferir">Transferir</button>
+                    <button class="btn-baixa" data-id="${i.id}">Baixa</button>
+                    <button class="btn-transferir" data-id="${i.id}">Transferir</button>
                 </td>`;
         } else if (admin) {
             acoesHtml = '<td></td>';
         }
         return `
             <tr>
+                <td>${prod.codigo}</td>
+                <td>${prod.nome}</td>
                 <td class="${statusClass}">${i.serial}</td>
-                <td>${getCodigoNome(i.codigoId)}</td>
                 <td><span class="badge-predio">${getPredioNome(i.predioId)}</span></td>
                 ${acoesHtml}
             </tr>
@@ -260,38 +298,45 @@ function renderizarTabela() {
     }).join('');
 
     if (admin) {
-        tbody.querySelectorAll('button').forEach(btn => {
-            btn.addEventListener('click', () => {
-                const id = btn.dataset.id;
-                const acao = btn.dataset.acao;
-                const item = itens.find(i => i.id === id);
-                if (!item) return;
-                if (acao === 'baixa') {
-                    if (confirm(`Dar baixa definitiva no serial "${item.serial}"?`)) {
-                        item.status = 'baixado';
-                        addHistorico(item.serial, 'baixa', getPredioNome(item.predioId), '');
-                        salvarDados();
-                        atualizarTudo();
-                        toast('Baixa registrada', 'sucesso');
-                    }
-                } else if (acao === 'transferir') {
-                    // Preencher formulário de transferência e focar
-                    document.getElementById('transfSerial').value = id;
-                    document.getElementById('transfOrigem').value = item.predioId;
-                    document.getElementById('transfDestino').value = '';
-                    document.getElementById('transfDestino').focus();
-                    toast('Selecione o destino e clique Transferir', 'sucesso');
-                }
-            });
+        tbody.querySelectorAll('.btn-baixa').forEach(btn => {
+            btn.addEventListener('click', () => darBaixa(btn.dataset.id));
+        });
+        tbody.querySelectorAll('.btn-transferir').forEach(btn => {
+            btn.addEventListener('click', () => prepararTransferencia(btn.dataset.id));
         });
     }
 }
 
+function darBaixa(id) {
+    const item = itens.find(i => i.id === id);
+    if (!item || item.status !== 'disponivel') return;
+    const prod = getProdutoInfo(item.produtoId);
+    if (confirm(`Dar baixa definitiva no serial "${item.serial}" (${prod.codigo} - ${prod.nome})?`)) {
+        item.status = 'baixado';
+        addHistorico('baixa', prod.codigo, prod.nome, item.serial, getPredioNome(item.predioId), '');
+        salvarDados();
+        atualizarTudo();
+        toast('Baixa registrada', 'sucesso');
+    }
+}
+
+function prepararTransferencia(id) {
+    const item = itens.find(i => i.id === id);
+    if (!item || item.status !== 'disponivel') return;
+    document.getElementById('transfSerial').value = id;
+    document.getElementById('transfOrigem').value = item.predioId;
+    document.getElementById('transfDestino').value = '';
+    document.getElementById('transfDestino').focus();
+    toast('Selecione o destino e clique Transferir', 'sucesso');
+}
+
 // ==================== HISTÓRICO ====================
-function addHistorico(serial, tipo, predioOrigem, predioDestino) {
+function addHistorico(tipo, produtoCodigo, produtoNome, serial, predioOrigem, predioDestino) {
     historico.push({
-        serial,
         tipo,
+        produtoCodigo,
+        produtoNome,
+        serial,
         predioOrigem,
         predioDestino,
         data: new Date().toLocaleString('pt-BR')
@@ -308,11 +353,11 @@ function renderizarHistorico() {
     const recentes = historico.slice(-40).reverse();
     container.innerHTML = recentes.map(h => {
         let tipoClasse = '', descricao = '';
-        if (h.tipo === 'entrada') { tipoClasse = 'tipo-entrada'; descricao = `ENTRADA em ${h.predioOrigem}`; }
-        else if (h.tipo === 'baixa') { tipoClasse = 'tipo-baixa'; descricao = `BAIXA de ${h.predioOrigem}`; }
-        else if (h.tipo === 'transferencia') { tipoClasse = 'tipo-transf'; descricao = `TRANSF. ${h.predioOrigem} → ${h.predioDestino}`; }
+        if (h.tipo === 'entrada') { tipoClasse = 'tipo-entrada'; descricao = `ENTRADA de ${h.serial} (${h.produtoCodigo}) em ${h.predioOrigem}`; }
+        else if (h.tipo === 'baixa') { tipoClasse = 'tipo-baixa'; descricao = `BAIXA de ${h.serial} (${h.produtoCodigo}) de ${h.predioOrigem}`; }
+        else if (h.tipo === 'transferencia') { tipoClasse = 'tipo-transf'; descricao = `TRANSF. de ${h.serial} de ${h.predioOrigem} → ${h.predioDestino}`; }
         return `<div class="item-historico">
-            <span><strong>${h.serial}</strong> — <span class="${tipoClasse}">${descricao}</span></span>
+            <span>${descricao}</span>
             <span class="data">${h.data}</span>
         </div>`;
     }).join('');
@@ -322,25 +367,20 @@ function renderizarHistorico() {
 document.getElementById('formCadastroSerial').addEventListener('submit', (e) => {
     e.preventDefault();
     if (usuarioAtual !== 'admin') return;
-    const codigoId = document.getElementById('cadCodigo').value;
+    const produtoId = document.getElementById('cadProduto').value;
     const serial = document.getElementById('cadSerial').value.trim().toUpperCase();
     const predioId = document.getElementById('cadPredio').value;
-    if (!codigoId || !serial || !predioId) return toast('Preencha todos os campos', 'erro');
+    if (!produtoId || !serial || !predioId) return toast('Preencha todos os campos', 'erro');
     if (itens.some(i => i.serial === serial && i.status === 'disponivel')) {
         return toast('Já existe um item disponível com esse serial', 'erro');
     }
-    itens.push({
-        id: gerarId(),
-        serial,
-        codigoId,
-        predioId,
-        status: 'disponivel'
-    });
-    addHistorico(serial, 'entrada', getPredioNome(predioId), '');
+    itens.push({ id: gerarId(), serial, produtoId, predioId, status: 'disponivel' });
+    const prod = getProdutoInfo(produtoId);
+    addHistorico('entrada', prod.codigo, prod.nome, serial, getPredioNome(predioId), '');
     salvarDados();
     atualizarTudo();
     e.target.reset();
-    toast('Serial cadastrado', 'sucesso');
+    toast('Serial cadastrado e entrada registrada', 'sucesso');
 });
 
 document.getElementById('formTransf').addEventListener('submit', (e) => {
@@ -355,17 +395,20 @@ document.getElementById('formTransf').addEventListener('submit', (e) => {
     if (!item || item.predioId !== origemId || item.status !== 'disponivel') {
         return toast('Item não encontrado na origem', 'erro');
     }
+    const origemNome = getPredioNome(origemId);
+    const destinoNome = getPredioNome(destinoId);
     item.predioId = destinoId;
-    addHistorico(item.serial, 'transferencia', getPredioNome(origemId), getPredioNome(destinoId));
+    const prod = getProdutoInfo(item.produtoId);
+    addHistorico('transferencia', prod.codigo, prod.nome, item.serial, origemNome, destinoNome);
     salvarDados();
     atualizarTudo();
     e.target.reset();
     toast('Transferência concluída', 'sucesso');
 });
 
-// ==================== EXPORTAÇÃO/IMPORTAÇÃO ====================
+// ==================== EXPORTAÇÃO / IMPORTAÇÃO ====================
 document.getElementById('btnExportar').addEventListener('click', () => {
-    const data = JSON.stringify({ predios, codigos, itens, historico }, null, 2);
+    const data = JSON.stringify({ predios, produtos, itens, historico }, null, 2);
     const blob = new Blob([data], { type: 'application/json' });
     const a = document.createElement('a');
     a.href = URL.createObjectURL(blob);
@@ -386,10 +429,10 @@ document.getElementById('btnImportar').addEventListener('click', () => {
         reader.onload = (e) => {
             try {
                 const data = JSON.parse(e.target.result);
-                if (data.predios && data.codigos && data.itens && data.historico) {
+                if (data.predios && data.produtos && data.itens && data.historico) {
                     if (confirm('Substituir todos os dados?')) {
                         predios = data.predios;
-                        codigos = data.codigos;
+                        produtos = data.produtos;
                         itens = data.itens;
                         historico = data.historico;
                         salvarDados();
@@ -414,9 +457,9 @@ document.getElementById('btnLimparHistorico').addEventListener('click', () => {
     }
 });
 
-// Logout, filtros, data...
+// ==================== LOGOUT, FILTROS, DATA ====================
 document.getElementById('btnLogout').addEventListener('click', mostrarLogin);
-document.getElementById('filtroSerial').addEventListener('input', renderizarTabela);
+document.getElementById('filtroGeral').addEventListener('input', renderizarTabela);
 document.getElementById('filtroPredio').addEventListener('change', renderizarTabela);
 document.getElementById('filtroStatus').addEventListener('change', renderizarTabela);
 
@@ -428,35 +471,34 @@ function atualizarData() {
 
 function atualizarTudo() {
     renderizarPredios();
-    renderizarCodigos();
+    renderizarProdutos();
     atualizarSelects();
     atualizarResumo();
     renderizarTabela();
     renderizarHistorico();
 }
 
-// Inicialização
+// ==================== INICIALIZAÇÃO ====================
 function verificarSessao() {
     const sessao = sessionStorage.getItem('usuario');
     if (sessao === 'admin' || sessao === 'cliente') entrarComo(sessao);
     else mostrarLogin();
 }
+
 document.getElementById('btnAdmin').addEventListener('click', () => {
     document.getElementById('senhaBox').style.display = 'flex';
     document.getElementById('erroSenha').style.display = 'none';
     document.getElementById('senhaAdmin').focus();
 });
-document.getElementById('btnEntrarAdmin').addEventListener('click', () => {
-    if (document.getElementById('senhaAdmin').value === SENHA_ADMIN) entrarComo('admin');
-    else {
-        document.getElementById('erroSenha').style.display = 'block';
-        document.getElementById('senhaAdmin').value = '';
-    }
-});
+
+document.getElementById('btnEntrarAdmin').addEventListener('click', tentarLoginAdmin);
+
 document.getElementById('btnCliente').addEventListener('click', () => entrarComo('cliente'));
+
 document.getElementById('senhaAdmin').addEventListener('keydown', (e) => {
-    if (e.key === 'Enter') document.getElementById('btnEntrarAdmin').click();
+    if (e.key === 'Enter') tentarLoginAdmin();
 });
+
 document.addEventListener('DOMContentLoaded', () => {
     carregarDados();
     verificarSessao();
