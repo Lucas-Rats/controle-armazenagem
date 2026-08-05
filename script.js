@@ -1,5 +1,5 @@
 // ==================== CONFIGURAÇÃO ====================
-const SENHA_ADMIN = 'admin123'; // Altere aqui se desejar
+const SENHA_ADMIN = 'haroldo07'; // Altere aqui se desejar
 
 // ==================== ESTADO ====================
 const CHAVE = 'armazenagem_v8';
