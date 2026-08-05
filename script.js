@@ -1,3 +1,4 @@
+const SALT = 'armazem2024';
 const HASH_CORRETO = '73fdd166cd3efe591527028265ded0ba1b40b16d277ffb09db95b6c9701c4287';
 
 // ==================== ESTADO ====================
