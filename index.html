@@ -7,119 +7,139 @@
     <link rel="stylesheet" href="style.css">
 </head>
 <body>
-    <header class="topo">
-        <h1>Controle de Armazenagem</h1>
-        <span id="dataAtual"></span>
-    </header>
-
-    <main class="container">
-        <!-- Cards de resumo -->
-        <section class="resumo" id="cardsResumo"></section>
-
-        <div class="painel">
-            <!-- Coluna principal -->
-            <div class="tabela-bloco">
-                <!-- Gerenciar prédios -->
-                <div class="cartao">
-                    <h2>Gerenciar Locais de Armazenagem</h2>
-                    <div style="display:flex;gap:10px;margin-bottom:10px;">
-                        <input type="text" id="novoPredioNome" placeholder="Nome do novo local" style="flex:1;">
-                        <button id="btnAddPredio" class="btn-principal" style="width:auto;">Adicionar</button>
-                    </div>
-                    <ul id="listaPredios" style="list-style:none;padding:0;"></ul>
-                </div>
-
-                <!-- Tabela de produtos -->
-                <div class="cartao">
-                    <h2>Produtos em Estoque</h2>
-                    <div class="filtros">
-                        <input type="text" id="filtroSerial" placeholder="Buscar por Serial">
-                        <select id="filtroPredio"><option value="">Todos os locais</option></select>
-                        <span id="contagemResultados"></span>
-                    </div>
-                    <div class="tabela-scroll">
-                        <table>
-                            <thead>
-                                <tr><th>Serial</th><th>Qtd</th><th>Local</th><th>Ações</th></tr>
-                            </thead>
-                            <tbody id="corpoTabela"></tbody>
-                        </table>
-                    </div>
-                    <div class="acoes-dados">
-                        <button id="btnExportar" class="btn-outline">Exportar Dados</button>
-                        <button id="btnImportar" class="btn-outline">Importar Dados</button>
-                    </div>
-                </div>
-
-                <!-- Histórico -->
-                <div class="cartao">
-                    <h2>Histórico de Movimentações</h2>
-                    <div id="listaHistorico" class="historico-scroll"></div>
-                    <button id="btnLimparHistorico" class="btn-perigo" style="margin-top:12px;">Limpar histórico</button>
-                </div>
+    <!-- Tela de Login -->
+    <div id="telaLogin" class="login-container">
+        <div class="login-box">
+            <h1>Controle de Armazenagem</h1>
+            <p>Selecione o tipo de acesso:</p>
+            <div class="login-botoes">
+                <button id="btnAdmin" class="btn-principal btn-login">Administrador</button>
+                <button id="btnCliente" class="btn-outline btn-login">Cliente</button>
             </div>
-
-            <!-- Formulários -->
-            <aside class="forms-bloco">
-                <div class="cartao">
-                    <h2>Cadastrar Produto</h2>
-                    <form id="formCadastro" autocomplete="off">
-                        <label>Serial / Part Number *</label>
-                        <input type="text" id="cadSerial" required>
-                        <label>Quantidade Inicial *</label>
-                        <input type="number" id="cadQty" min="1" required>
-                        <label>Local *</label>
-                        <select id="cadPredio" required></select>
-                        <button type="submit" class="btn-principal">Cadastrar</button>
-                    </form>
-                </div>
-
-                <div class="cartao">
-                    <h2>Movimentação</h2>
-                    <form id="formMov" autocomplete="off">
-                        <label>Serial / Part Number *</label>
-                        <select id="movSerial" required></select>
-                        <div class="linha">
-                            <div>
-                                <label>Tipo *</label>
-                                <select id="movTipo" required>
-                                    <option value="">Selecione...</option>
-                                    <option value="entrada">Entrada</option>
-                                    <option value="saida">Saída</option>
-                                </select>
-                            </div>
-                            <div>
-                                <label>Quantidade *</label>
-                                <input type="number" id="movQty" min="1" required>
-                            </div>
-                        </div>
-                        <button type="submit" class="btn-principal">Registrar</button>
-                    </form>
-                </div>
-
-                <div class="cartao">
-                    <h2>Transferência</h2>
-                    <form id="formTransf" autocomplete="off">
-                        <label>Serial / Part Number *</label>
-                        <select id="transfSerial" required></select>
-                        <div class="linha">
-                            <div>
-                                <label>De *</label>
-                                <select id="transfOrigem" required></select>
-                            </div>
-                            <div>
-                                <label>Para *</label>
-                                <select id="transfDestino" required></select>
-                            </div>
-                        </div>
-                        <label>Quantidade *</label>
-                        <input type="number" id="transfQty" min="1" required>
-                        <button type="submit" class="btn-principal">Transferir</button>
-                    </form>
-                </div>
-            </aside>
+            <div id="senhaBox" style="display:none;">
+                <input type="password" id="senhaAdmin" placeholder="Senha">
+                <button id="btnEntrarAdmin" class="btn-principal">Entrar</button>
+                <p id="erroSenha" style="color:red; font-size:0.85rem; margin-top:5px; display:none;">Senha incorreta</p>
+            </div>
         </div>
-    </main>
+    </div>
+
+    <!-- Sistema Principal (inicialmente oculto) -->
+    <div id="appPrincipal" style="display:none;">
+        <header class="topo">
+            <h1>Controle de Armazenagem</h1>
+            <div style="display:flex; align-items:center; gap:15px;">
+                <span id="nivelAcesso" style="font-size:0.8rem; background:#334155; padding:4px 10px; border-radius:4px;">Admin</span>
+                <span id="dataAtual"></span>
+                <button id="btnLogout" class="btn-perigo" style="width:auto; padding:6px 12px;">Sair</button>
+            </div>
+        </header>
+
+        <main class="container">
+            <section class="resumo" id="cardsResumo"></section>
+
+            <div class="painel">
+                <div class="tabela-bloco">
+                    <!-- Gerenciar prédios (apenas admin) -->
+                    <div class="cartao" id="blocoGerenciarPredios">
+                        <h2>Gerenciar Locais de Armazenagem</h2>
+                        <div style="display:flex;gap:10px;margin-bottom:10px;">
+                            <input type="text" id="novoPredioNome" placeholder="Nome do novo local" style="flex:1;">
+                            <button id="btnAddPredio" class="btn-principal" style="width:auto;">Adicionar</button>
+                        </div>
+                        <ul id="listaPredios" style="list-style:none;padding:0;"></ul>
+                    </div>
+
+                    <!-- Tabela de produtos -->
+                    <div class="cartao">
+                        <h2>Produtos em Estoque</h2>
+                        <div class="filtros">
+                            <input type="text" id="filtroSerial" placeholder="Buscar por Serial">
+                            <select id="filtroPredio"><option value="">Todos os locais</option></select>
+                            <span id="contagemResultados"></span>
+                        </div>
+                        <div class="tabela-scroll">
+                            <table>
+                                <thead>
+                                    <tr><th>Serial</th><th>Qtd</th><th>Local</th><th id="colAcoes">Ações</th></tr>
+                                </thead>
+                                <tbody id="corpoTabela"></tbody>
+                            </table>
+                        </div>
+                        <div class="acoes-dados">
+                            <button id="btnExportar" class="btn-outline">Exportar Dados</button>
+                            <button id="btnImportar" class="btn-outline" id="btnImportar">Importar Dados</button>
+                        </div>
+                    </div>
+
+                    <!-- Histórico -->
+                    <div class="cartao">
+                        <h2>Histórico de Movimentações</h2>
+                        <div id="listaHistorico" class="historico-scroll"></div>
+                        <button id="btnLimparHistorico" class="btn-perigo" style="margin-top:12px;">Limpar histórico</button>
+                    </div>
+                </div>
+
+                <!-- Formulários (apenas admin) -->
+                <aside class="forms-bloco" id="blocoFormularios">
+                    <div class="cartao">
+                        <h2>Cadastrar Produto</h2>
+                        <form id="formCadastro" autocomplete="off">
+                            <label>Serial / Part Number *</label>
+                            <input type="text" id="cadSerial" required>
+                            <label>Quantidade Inicial *</label>
+                            <input type="number" id="cadQty" min="1" required>
+                            <label>Local *</label>
+                            <select id="cadPredio" required></select>
+                            <button type="submit" class="btn-principal">Cadastrar</button>
+                        </form>
+                    </div>
+                    <div class="cartao">
+                        <h2>Movimentação</h2>
+                        <form id="formMov" autocomplete="off">
+                            <label>Serial / Part Number *</label>
+                            <select id="movSerial" required></select>
+                            <div class="linha">
+                                <div>
+                                    <label>Tipo *</label>
+                                    <select id="movTipo" required>
+                                        <option value="">Selecione...</option>
+                                        <option value="entrada">Entrada</option>
+                                        <option value="saida">Saída</option>
+                                    </select>
+                                </div>
+                                <div>
+                                    <label>Quantidade *</label>
+                                    <input type="number" id="movQty" min="1" required>
+                                </div>
+                            </div>
+                            <button type="submit" class="btn-principal">Registrar</button>
+                        </form>
+                    </div>
+                    <div class="cartao">
+                        <h2>Transferência</h2>
+                        <form id="formTransf" autocomplete="off">
+                            <label>Serial / Part Number *</label>
+                            <select id="transfSerial" required></select>
+                            <div class="linha">
+                                <div>
+                                    <label>De *</label>
+                                    <select id="transfOrigem" required></select>
+                                </div>
+                                <div>
+                                    <label>Para *</label>
+                                    <select id="transfDestino" required></select>
+                                </div>
+                            </div>
+                            <label>Quantidade *</label>
+                            <input type="number" id="transfQty" min="1" required>
+                            <button type="submit" class="btn-principal">Transferir</button>
+                        </form>
+                    </div>
+                </aside>
+            </div>
+        </main>
+    </div>
 
     <div id="toast" class="toast"></div>
     <script src="script.js" defer></script>
