@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Controle de Armazenagem</title>
+    <title>Controle de Armazenagem - Logística</title>
     <link rel="stylesheet" href="style.css">
 </head>
 <body>
@@ -24,7 +24,7 @@
         </div>
     </div>
 
-    <!-- Sistema Principal (inicialmente oculto) -->
+    <!-- Sistema Principal -->
     <div id="appPrincipal" style="display:none;">
         <header class="topo">
             <h1>Controle de Armazenagem</h1>
@@ -36,11 +36,12 @@
         </header>
 
         <main class="container">
+            <!-- Cards de resumo -->
             <section class="resumo" id="cardsResumo"></section>
 
             <div class="painel">
                 <div class="tabela-bloco">
-                    <!-- Gerenciar prédios (apenas admin) -->
+                    <!-- Gerenciar Prédios (admin) -->
                     <div class="cartao" id="blocoGerenciarPredios">
                         <h2>Gerenciar Locais de Armazenagem</h2>
                         <div style="display:flex;gap:10px;margin-bottom:10px;">
@@ -50,25 +51,36 @@
                         <ul id="listaPredios" style="list-style:none;padding:0;"></ul>
                     </div>
 
-                    <!-- Tabela de produtos -->
+                    <!-- Produtos Base (admin) -->
+                    <div class="cartao" id="blocoProdutosBase">
+                        <h2>Produtos Base (Códigos)</h2>
+                        <div style="display:flex;gap:10px;margin-bottom:10px;">
+                            <input type="text" id="novoCodigo" placeholder="Código do produto" style="flex:1;">
+                            <button id="btnAddCodigo" class="btn-principal" style="width:auto;">Adicionar Código</button>
+                        </div>
+                        <ul id="listaCodigos" style="list-style:none;padding:0;"></ul>
+                    </div>
+
+                    <!-- Itens (Seriais) -->
                     <div class="cartao">
-                        <h2>Produtos em Estoque</h2>
+                        <h2>Itens em Estoque</h2>
                         <div class="filtros">
                             <input type="text" id="filtroSerial" placeholder="Buscar por Serial">
                             <select id="filtroPredio"><option value="">Todos os locais</option></select>
+                            <select id="filtroStatus"><option value="disponivel">Disponíveis</option><option value="baixado">Baixados</option></select>
                             <span id="contagemResultados"></span>
                         </div>
                         <div class="tabela-scroll">
                             <table>
                                 <thead>
-                                    <tr><th>Serial</th><th>Qtd</th><th>Local</th><th id="colAcoes">Ações</th></tr>
+                                    <tr><th>Serial</th><th>Código</th><th>Local</th><th id="colAcoes">Ações</th></tr>
                                 </thead>
                                 <tbody id="corpoTabela"></tbody>
                             </table>
                         </div>
                         <div class="acoes-dados">
                             <button id="btnExportar" class="btn-outline">Exportar Dados</button>
-                            <button id="btnImportar" class="btn-outline" id="btnImportar">Importar Dados</button>
+                            <button id="btnImportar" class="btn-outline">Importar Dados</button>
                         </div>
                     </div>
 
@@ -80,46 +92,24 @@
                     </div>
                 </div>
 
-                <!-- Formulários (apenas admin) -->
+                <!-- Formulários (admin) -->
                 <aside class="forms-bloco" id="blocoFormularios">
                     <div class="cartao">
-                        <h2>Cadastrar Produto</h2>
-                        <form id="formCadastro" autocomplete="off">
-                            <label>Serial / Part Number *</label>
+                        <h2>Cadastrar Serial</h2>
+                        <form id="formCadastroSerial" autocomplete="off">
+                            <label>Código do Produto *</label>
+                            <select id="cadCodigo" required></select>
+                            <label>Número de Série *</label>
                             <input type="text" id="cadSerial" required>
-                            <label>Quantidade Inicial *</label>
-                            <input type="number" id="cadQty" min="1" required>
                             <label>Local *</label>
                             <select id="cadPredio" required></select>
-                            <button type="submit" class="btn-principal">Cadastrar</button>
-                        </form>
-                    </div>
-                    <div class="cartao">
-                        <h2>Movimentação</h2>
-                        <form id="formMov" autocomplete="off">
-                            <label>Serial / Part Number *</label>
-                            <select id="movSerial" required></select>
-                            <div class="linha">
-                                <div>
-                                    <label>Tipo *</label>
-                                    <select id="movTipo" required>
-                                        <option value="">Selecione...</option>
-                                        <option value="entrada">Entrada</option>
-                                        <option value="saida">Saída</option>
-                                    </select>
-                                </div>
-                                <div>
-                                    <label>Quantidade *</label>
-                                    <input type="number" id="movQty" min="1" required>
-                                </div>
-                            </div>
-                            <button type="submit" class="btn-principal">Registrar</button>
+                            <button type="submit" class="btn-principal">Cadastrar Serial</button>
                         </form>
                     </div>
                     <div class="cartao">
                         <h2>Transferência</h2>
                         <form id="formTransf" autocomplete="off">
-                            <label>Serial / Part Number *</label>
+                            <label>Serial *</label>
                             <select id="transfSerial" required></select>
                             <div class="linha">
                                 <div>
@@ -131,8 +121,6 @@
                                     <select id="transfDestino" required></select>
                                 </div>
                             </div>
-                            <label>Quantidade *</label>
-                            <input type="number" id="transfQty" min="1" required>
                             <button type="submit" class="btn-principal">Transferir</button>
                         </form>
                     </div>

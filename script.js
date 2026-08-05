@@ -1,12 +1,12 @@
 // ==================== CONFIGURAÇÃO ====================
-const SENHA_ADMIN = 'haroldo07'; // Altere aqui a senha do administrador
+const SENHA_ADMIN = 'admin123'; // Altere aqui se desejar
 
 // ==================== ESTADO ====================
-const CHAVE = 'armazenagem_v7';
-let predios = [];
-let produtos = [];
-let historico = [];
-let usuarioAtual = null; // 'admin' ou 'cliente'
+const CHAVE = 'armazenagem_v8';
+let predios = [];           // { id, nome }
+let codigos = [];          // { id, codigo }
+let itens = [];            // { id, serial, codigoId, predioId, status: 'disponivel' | 'baixado' }
+let historico = [];        // { serial, tipo, predioOrigem, predioDestino, data }
 
 function gerarId() {
     return Date.now().toString(36) + Math.random().toString(36).substr(2, 4);
@@ -19,10 +19,12 @@ function carregarDados() {
         if (raw) {
             const data = JSON.parse(raw);
             predios = data.predios || [];
-            produtos = data.produtos || [];
+            codigos = data.codigos || [];
+            itens = data.itens || [];
             historico = data.historico || [];
         }
     } catch (e) {}
+    // Dados padrão
     if (predios.length === 0) {
         predios = [
             { id: gerarId(), nome: 'Prédio 1' },
@@ -33,10 +35,11 @@ function carregarDados() {
 }
 
 function salvarDados() {
-    localStorage.setItem(CHAVE, JSON.stringify({ predios, produtos, historico }));
+    localStorage.setItem(CHAVE, JSON.stringify({ predios, codigos, itens, historico }));
 }
 
 // ==================== AUTENTICAÇÃO ====================
+let usuarioAtual = null;
 function mostrarLogin() {
     document.getElementById('telaLogin').style.display = 'flex';
     document.getElementById('appPrincipal').style.display = 'none';
@@ -46,7 +49,6 @@ function mostrarLogin() {
     sessionStorage.removeItem('usuario');
     usuarioAtual = null;
 }
-
 function entrarComo(tipo) {
     usuarioAtual = tipo;
     sessionStorage.setItem('usuario', tipo);
@@ -56,17 +58,19 @@ function entrarComo(tipo) {
     atualizarTudo();
     atualizarData();
 }
-
 function aplicarPermissoes() {
     const admin = usuarioAtual === 'admin';
     document.getElementById('blocoGerenciarPredios').style.display = admin ? 'block' : 'none';
+    document.getElementById('blocoProdutosBase').style.display = admin ? 'block' : 'none';
     document.getElementById('blocoFormularios').style.display = admin ? 'block' : 'none';
     document.getElementById('btnImportar').style.display = admin ? 'inline-block' : 'none';
     document.getElementById('btnLimparHistorico').style.display = admin ? 'inline-block' : 'none';
     document.getElementById('colAcoes').style.display = admin ? 'table-cell' : 'none';
-
     document.getElementById('nivelAcesso').textContent = admin ? 'Admin' : 'Cliente';
     document.getElementById('nivelAcesso').style.background = admin ? '#0d904f' : '#1a73e8';
+    // Filtro de status: cliente vê apenas disponíveis
+    document.getElementById('filtroStatus').style.display = admin ? 'inline-block' : 'none';
+    if (!admin) document.getElementById('filtroStatus').value = 'disponivel';
 }
 
 // ==================== TOAST ====================
@@ -88,7 +92,6 @@ function renderizarPredios() {
             <button class="btn-remover excluir-predio" data-id="${p.id}" style="margin-left:10px;">Excluir</button>
         </li>
     `).join('');
-
     document.querySelectorAll('.edit-predio').forEach(input => {
         input.addEventListener('change', () => {
             const predio = predios.find(p => p.id === input.dataset.id);
@@ -101,17 +104,14 @@ function renderizarPredios() {
             }
         });
     });
-
     document.querySelectorAll('.excluir-predio').forEach(btn => {
         btn.addEventListener('click', () => {
-            const id = btn.dataset.id;
-            const temProdutos = produtos.some(p => p.predioId === id);
-            if (temProdutos) {
-                toast('Remova todos os produtos deste local primeiro', 'erro');
+            if (itens.some(i => i.predioId === btn.dataset.id && i.status === 'disponivel')) {
+                toast('Esvazie o local antes de excluí-lo', 'erro');
                 return;
             }
-            if (confirm('Excluir este local de armazenagem?')) {
-                predios = predios.filter(p => p.id !== id);
+            if (confirm('Excluir local?')) {
+                predios = predios.filter(p => p.id !== btn.dataset.id);
                 salvarDados();
                 atualizarTudo();
                 toast('Local removido', 'sucesso');
@@ -119,22 +119,11 @@ function renderizarPredios() {
         });
     });
 }
-
-function atualizarSelectsPredios() {
-    const opts = predios.map(p => `<option value="${p.id}">${p.nome}</option>`).join('');
-    document.getElementById('cadPredio').innerHTML = '<option value="">Selecione...</option>' + opts;
-    document.getElementById('filtroPredio').innerHTML = '<option value="">Todos os locais</option>' + opts;
-    document.getElementById('transfOrigem').innerHTML = '<option value="">Origem...</option>' + opts;
-    document.getElementById('transfDestino').innerHTML = '<option value="">Destino...</option>' + opts;
-}
-
 document.getElementById('btnAddPredio').addEventListener('click', () => {
     if (usuarioAtual !== 'admin') return;
     const nome = document.getElementById('novoPredioNome').value.trim();
     if (!nome) return toast('Digite um nome', 'erro');
-    if (predios.some(p => p.nome.toLowerCase() === nome.toLowerCase())) {
-        return toast('Já existe um local com esse nome', 'erro');
-    }
+    if (predios.some(p => p.nome.toLowerCase() === nome.toLowerCase())) return toast('Já existe', 'erro');
     predios.push({ id: gerarId(), nome });
     salvarDados();
     document.getElementById('novoPredioNome').value = '';
@@ -142,17 +131,57 @@ document.getElementById('btnAddPredio').addEventListener('click', () => {
     toast('Local adicionado', 'sucesso');
 });
 
-// ==================== PRODUTOS ====================
+// ==================== CÓDIGOS DE PRODUTO ====================
+function renderizarCodigos() {
+    const lista = document.getElementById('listaCodigos');
+    if (usuarioAtual !== 'admin') return;
+    lista.innerHTML = codigos.map(c => `
+        <li style="display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:1px solid #eee;">
+            <span>${c.codigo}</span>
+            <button class="btn-remover excluir-codigo" data-id="${c.id}" style="margin-left:10px;">Excluir</button>
+        </li>
+    `).join('');
+    document.querySelectorAll('.excluir-codigo').forEach(btn => {
+        btn.addEventListener('click', () => {
+            if (itens.some(i => i.codigoId === btn.dataset.id && i.status === 'disponivel')) {
+                toast('Existem itens ativos desse código. Dê baixa antes.', 'erro');
+                return;
+            }
+            if (confirm('Excluir código?')) {
+                codigos = codigos.filter(c => c.id !== btn.dataset.id);
+                salvarDados();
+                atualizarTudo();
+                toast('Código removido', 'sucesso');
+            }
+        });
+    });
+}
+document.getElementById('btnAddCodigo').addEventListener('click', () => {
+    if (usuarioAtual !== 'admin') return;
+    const cod = document.getElementById('novoCodigo').value.trim().toUpperCase();
+    if (!cod) return toast('Digite o código', 'erro');
+    if (codigos.some(c => c.codigo === cod)) return toast('Código já existe', 'erro');
+    codigos.push({ id: gerarId(), codigo: cod });
+    salvarDados();
+    document.getElementById('novoCodigo').value = '';
+    atualizarTudo();
+    toast('Código adicionado', 'sucesso');
+});
+
+function getCodigoNome(id) {
+    return codigos.find(c => c.id === id)?.codigo || '???';
+}
 function getPredioNome(id) {
-    return predios.find(p => p.id === id)?.nome || 'Desconhecido';
+    return predios.find(p => p.id === id)?.nome || '???';
 }
 
+// ==================== ITENS (SERIAL) ====================
 function atualizarResumo() {
     const container = document.getElementById('cardsResumo');
     const totais = {};
     predios.forEach(p => totais[p.id] = 0);
-    produtos.forEach(prod => {
-        if (totais[prod.predioId] !== undefined) totais[prod.predioId] += prod.qty;
+    itens.filter(i => i.status === 'disponivel').forEach(i => {
+        if (totais[i.predioId] !== undefined) totais[i.predioId]++;
     });
     const cores = ['#4a90d9', '#e67e22', '#27ae60', '#8e44ad', '#c0392b', '#2980b9'];
     let html = predios.map((p, i) => {
@@ -160,65 +189,71 @@ function atualizarResumo() {
         return `<div class="card-resumo" style="border-left-color:${cor}">
             <div class="titulo">${p.nome}</div>
             <div class="valor">${totais[p.id] || 0}</div>
-            <div class="sub">itens em estoque</div>
+            <div class="sub">itens disponíveis</div>
         </div>`;
     }).join('');
+    const total = Object.values(totais).reduce((a,b)=>a+b,0);
     html += `<div class="card-resumo total">
         <div class="titulo">Total Geral</div>
-        <div class="valor">${Object.values(totais).reduce((a,b)=>a+b,0)}</div>
-        <div class="sub">unidades</div>
+        <div class="valor">${total}</div>
+        <div class="sub">unidades em estoque</div>
     </div>`;
     container.innerHTML = html;
 }
 
-function atualizarSelectsProdutos() {
-    if (usuarioAtual !== 'admin') return;
-    const mov = document.getElementById('movSerial');
-    const transf = document.getElementById('transfSerial');
-    const options = produtos.map(p =>
-        `<option value="${p.id}">${p.serial} (${getPredioNome(p.predioId)} - ${p.qty} un.)</option>`
-    ).join('');
-    const vazio = '<option value="">Selecione...</option>';
-    mov.innerHTML = vazio + options;
-    transf.innerHTML = vazio + options;
+function atualizarSelects() {
+    const optsPredios = predios.map(p => `<option value="${p.id}">${p.nome}</option>`).join('');
+    document.getElementById('cadPredio').innerHTML = '<option value="">Selecione...</option>' + optsPredios;
+    document.getElementById('filtroPredio').innerHTML = '<option value="">Todos os locais</option>' + optsPredios;
+    document.getElementById('transfOrigem').innerHTML = '<option value="">Origem...</option>' + optsPredios;
+    document.getElementById('transfDestino').innerHTML = '<option value="">Destino...</option>' + optsPredios;
+
+    const optsCodigos = codigos.map(c => `<option value="${c.id}">${c.codigo}</option>`).join('');
+    document.getElementById('cadCodigo').innerHTML = '<option value="">Selecione...</option>' + optsCodigos;
 }
 
 function renderizarTabela() {
     const filtroSerial = document.getElementById('filtroSerial').value.trim().toLowerCase();
     const filtroPredio = document.getElementById('filtroPredio').value;
-    const tbody = document.getElementById('corpoTabela');
+    const filtroStatus = document.getElementById('filtroStatus').value;
     const admin = usuarioAtual === 'admin';
+    const tbody = document.getElementById('corpoTabela');
 
-    let lista = produtos.filter(p => {
-        const matchSerial = !filtroSerial || p.serial.toLowerCase().includes(filtroSerial);
-        const matchPredio = !filtroPredio || p.predioId === filtroPredio;
+    let lista = itens.filter(i => {
+        if (!admin && i.status !== 'disponivel') return false;
+        if (admin && filtroStatus && i.status !== filtroStatus) return false;
+        if (!admin && i.status !== 'disponivel') return false;
+        const matchSerial = !filtroSerial || i.serial.toLowerCase().includes(filtroSerial);
+        const matchPredio = !filtroPredio || i.predioId === filtroPredio;
         return matchSerial && matchPredio;
     });
 
-    document.getElementById('contagemResultados').textContent = `${lista.length} produto(s)`;
+    document.getElementById('contagemResultados').textContent = `${lista.length} item(ns)`;
     document.getElementById('colAcoes').style.display = admin ? 'table-cell' : 'none';
 
     if (lista.length === 0) {
         const colspan = admin ? 4 : 3;
-        tbody.innerHTML = `<tr><td colspan="${colspan}" class="vazio">Nenhum produto encontrado.</td></tr>`;
+        tbody.innerHTML = `<tr><td colspan="${colspan}" class="vazio">Nenhum item encontrado.</td></tr>`;
         return;
     }
 
-    tbody.innerHTML = lista.map(p => {
+    tbody.innerHTML = lista.map(i => {
+        const statusClass = i.status === 'disponivel' ? 'status-disponivel' : 'status-baixado';
         let acoesHtml = '';
-        if (admin) {
+        if (admin && i.status === 'disponivel') {
             acoesHtml = `
                 <td class="acoes">
-                    <button class="btn-entrada" data-id="${p.id}" data-acao="entrada">Entrada</button>
-                    <button class="btn-saida" data-id="${p.id}" data-acao="saida">Saída</button>
-                    <button class="btn-remover" data-id="${p.id}" data-acao="remover">Remover</button>
+                    <button class="btn-baixa" data-id="${i.id}" data-acao="baixa">Baixa</button>
+                    <button class="btn-transferir" data-id="${i.id}" data-acao="transferir">Transferir</button>
                 </td>`;
+        } else if (admin) {
+            acoesHtml = '<td></td>';
         }
         return `
             <tr>
-                <td><strong>${p.serial}</strong></td>
-                <td class="${p.qty <= 5 ? 'qtd-baixa' : ''}">${p.qty}</td>
-                <td><span class="badge-predio">${getPredioNome(p.predioId)}</span></td>
+                <td class="${statusClass}">${i.serial}</td>
+                <td>${getCodigoNome(i.codigoId)}</td>
+                <td><span class="badge-predio">${getPredioNome(i.predioId)}</span></td>
                 ${acoesHtml}
             </tr>
         `;
@@ -229,26 +264,23 @@ function renderizarTabela() {
             btn.addEventListener('click', () => {
                 const id = btn.dataset.id;
                 const acao = btn.dataset.acao;
-                const prod = produtos.find(p => p.id === id);
-                if (!prod) return;
-                if (acao === 'entrada') {
-                    prod.qty += 1;
-                    addHistorico(prod.serial, 'entrada', 1, getPredioNome(prod.predioId));
-                    salvarDados(); atualizarTudo(); toast(`+1 ${prod.serial}`, 'sucesso');
-                } else if (acao === 'saida') {
-                    if (prod.qty < 1) return toast('Estoque zerado', 'erro');
-                    prod.qty -= 1;
-                    addHistorico(prod.serial, 'saida', 1, getPredioNome(prod.predioId));
-                    if (prod.qty === 0 && confirm('Produto zerado. Remover?')) {
-                        produtos = produtos.filter(p => p.id !== id);
+                const item = itens.find(i => i.id === id);
+                if (!item) return;
+                if (acao === 'baixa') {
+                    if (confirm(`Dar baixa definitiva no serial "${item.serial}"?`)) {
+                        item.status = 'baixado';
+                        addHistorico(item.serial, 'baixa', getPredioNome(item.predioId), '');
+                        salvarDados();
+                        atualizarTudo();
+                        toast('Baixa registrada', 'sucesso');
                     }
-                    salvarDados(); atualizarTudo(); toast(`-1 ${prod.serial}`, 'sucesso');
-                } else if (acao === 'remover') {
-                    if (confirm(`Remover "${prod.serial}"?`)) {
-                        addHistorico(prod.serial, 'remocao', prod.qty, getPredioNome(prod.predioId));
-                        produtos = produtos.filter(p => p.id !== id);
-                        salvarDados(); atualizarTudo(); toast('Produto removido', 'sucesso');
-                    }
+                } else if (acao === 'transferir') {
+                    // Preencher formulário de transferência e focar
+                    document.getElementById('transfSerial').value = id;
+                    document.getElementById('transfOrigem').value = item.predioId;
+                    document.getElementById('transfDestino').value = '';
+                    document.getElementById('transfDestino').focus();
+                    toast('Selecione o destino e clique Transferir', 'sucesso');
                 }
             });
         });
@@ -256,8 +288,14 @@ function renderizarTabela() {
 }
 
 // ==================== HISTÓRICO ====================
-function addHistorico(serial, tipo, qty, predio) {
-    historico.push({ serial, tipo, qty, predio, data: new Date().toLocaleString('pt-BR') });
+function addHistorico(serial, tipo, predioOrigem, predioDestino) {
+    historico.push({
+        serial,
+        tipo,
+        predioOrigem,
+        predioDestino,
+        data: new Date().toLocaleString('pt-BR')
+    });
     if (historico.length > 500) historico = historico.slice(-500);
 }
 
@@ -269,75 +307,65 @@ function renderizarHistorico() {
     }
     const recentes = historico.slice(-40).reverse();
     container.innerHTML = recentes.map(h => {
-        let tipoClasse = '', tipoTexto = h.tipo;
-        if (h.tipo === 'entrada') { tipoClasse = 'tipo-entrada'; tipoTexto = 'ENTRADA'; }
-        else if (h.tipo === 'saida') { tipoClasse = 'tipo-saida'; tipoTexto = 'SAÍDA'; }
-        else if (h.tipo === 'transferencia') { tipoClasse = 'tipo-transf'; tipoTexto = 'TRANSF.'; }
-        else { tipoClasse = 'tipo-saida'; tipoTexto = h.tipo.toUpperCase(); }
+        let tipoClasse = '', descricao = '';
+        if (h.tipo === 'entrada') { tipoClasse = 'tipo-entrada'; descricao = `ENTRADA em ${h.predioOrigem}`; }
+        else if (h.tipo === 'baixa') { tipoClasse = 'tipo-baixa'; descricao = `BAIXA de ${h.predioOrigem}`; }
+        else if (h.tipo === 'transferencia') { tipoClasse = 'tipo-transf'; descricao = `TRANSF. ${h.predioOrigem} → ${h.predioDestino}`; }
         return `<div class="item-historico">
-            <span><strong>${h.serial}</strong> — <span class="${tipoClasse}">${tipoTexto}</span> de ${h.qty} un. | ${h.predio}</span>
+            <span><strong>${h.serial}</strong> — <span class="${tipoClasse}">${descricao}</span></span>
             <span class="data">${h.data}</span>
         </div>`;
     }).join('');
 }
 
-// ==================== OPERAÇÕES (Admin) ====================
-document.getElementById('formCadastro').addEventListener('submit', (e) => {
+// ==================== OPERAÇÕES ====================
+document.getElementById('formCadastroSerial').addEventListener('submit', (e) => {
     e.preventDefault();
     if (usuarioAtual !== 'admin') return;
-    const serial = document.getElementById('cadSerial').value.trim();
-    const qty = parseInt(document.getElementById('cadQty').value, 10);
+    const codigoId = document.getElementById('cadCodigo').value;
+    const serial = document.getElementById('cadSerial').value.trim().toUpperCase();
     const predioId = document.getElementById('cadPredio').value;
-    if (!serial || isNaN(qty) || qty < 1 || !predioId) return toast('Preencha todos os campos', 'erro');
-    if (produtos.some(p => p.serial.toLowerCase() === serial.toLowerCase() && p.predioId === predioId)) {
-        return toast('Este serial já existe neste local', 'erro');
+    if (!codigoId || !serial || !predioId) return toast('Preencha todos os campos', 'erro');
+    if (itens.some(i => i.serial === serial && i.status === 'disponivel')) {
+        return toast('Já existe um item disponível com esse serial', 'erro');
     }
-    produtos.push({ id: gerarId(), serial, qty, predioId });
-    addHistorico(serial, 'entrada', qty, getPredioNome(predioId));
-    salvarDados(); atualizarTudo(); e.target.reset(); toast('Produto cadastrado', 'sucesso');
-});
-
-document.getElementById('formMov').addEventListener('submit', (e) => {
-    e.preventDefault();
-    if (usuarioAtual !== 'admin') return;
-    const id = document.getElementById('movSerial').value;
-    const tipo = document.getElementById('movTipo').value;
-    const qty = parseInt(document.getElementById('movQty').value, 10);
-    if (!id || !tipo || isNaN(qty) || qty < 1) return toast('Preencha todos os campos', 'erro');
-    const prod = produtos.find(p => p.id === id);
-    if (!prod) return toast('Produto não encontrado', 'erro');
-    if (tipo === 'saida' && prod.qty < qty) return toast(`Estoque insuficiente (${prod.qty} un.)`, 'erro');
-    prod.qty += (tipo === 'entrada' ? qty : -qty);
-    addHistorico(prod.serial, tipo, qty, getPredioNome(prod.predioId));
-    if (prod.qty === 0 && confirm('Estoque zerado. Remover produto?')) {
-        produtos = produtos.filter(p => p.id !== id);
-    }
-    salvarDados(); atualizarTudo(); e.target.reset(); toast('Movimentação registrada', 'sucesso');
+    itens.push({
+        id: gerarId(),
+        serial,
+        codigoId,
+        predioId,
+        status: 'disponivel'
+    });
+    addHistorico(serial, 'entrada', getPredioNome(predioId), '');
+    salvarDados();
+    atualizarTudo();
+    e.target.reset();
+    toast('Serial cadastrado', 'sucesso');
 });
 
 document.getElementById('formTransf').addEventListener('submit', (e) => {
     e.preventDefault();
     if (usuarioAtual !== 'admin') return;
-    const id = document.getElementById('transfSerial').value;
+    const serialId = document.getElementById('transfSerial').value;
     const origemId = document.getElementById('transfOrigem').value;
     const destinoId = document.getElementById('transfDestino').value;
-    const qty = parseInt(document.getElementById('transfQty').value, 10);
-    if (!id || !origemId || !destinoId || isNaN(qty) || qty < 1) return toast('Preencha todos os campos', 'erro');
+    if (!serialId || !origemId || !destinoId) return toast('Preencha todos os campos', 'erro');
     if (origemId === destinoId) return toast('Origem e destino iguais', 'erro');
-    const prodOrigem = produtos.find(p => p.id === id);
-    if (!prodOrigem || prodOrigem.predioId !== origemId || prodOrigem.qty < qty) return toast('Estoque insuficiente na origem', 'erro');
-    prodOrigem.qty -= qty;
-    if (prodOrigem.qty === 0) produtos = produtos.filter(p => p.id !== id);
-    const prodDestino = produtos.find(p => p.serial.toLowerCase() === prodOrigem.serial.toLowerCase() && p.predioId === destinoId);
-    if (prodDestino) prodDestino.qty += qty;
-    else produtos.push({ id: gerarId(), serial: prodOrigem.serial, qty, predioId: destinoId });
-    addHistorico(prodOrigem.serial, 'transferencia', qty, `${getPredioNome(origemId)} → ${getPredioNome(destinoId)}`);
-    salvarDados(); atualizarTudo(); e.target.reset(); toast('Transferência concluída', 'sucesso');
+    const item = itens.find(i => i.id === serialId);
+    if (!item || item.predioId !== origemId || item.status !== 'disponivel') {
+        return toast('Item não encontrado na origem', 'erro');
+    }
+    item.predioId = destinoId;
+    addHistorico(item.serial, 'transferencia', getPredioNome(origemId), getPredioNome(destinoId));
+    salvarDados();
+    atualizarTudo();
+    e.target.reset();
+    toast('Transferência concluída', 'sucesso');
 });
 
-// ==================== EXPORTAÇÃO / IMPORTAÇÃO ====================
+// ==================== EXPORTAÇÃO/IMPORTAÇÃO ====================
 document.getElementById('btnExportar').addEventListener('click', () => {
-    const data = JSON.stringify({ predios, produtos, historico }, null, 2);
+    const data = JSON.stringify({ predios, codigos, itens, historico }, null, 2);
     const blob = new Blob([data], { type: 'application/json' });
     const a = document.createElement('a');
     a.href = URL.createObjectURL(blob);
@@ -358,10 +386,11 @@ document.getElementById('btnImportar').addEventListener('click', () => {
         reader.onload = (e) => {
             try {
                 const data = JSON.parse(e.target.result);
-                if (data.predios && data.produtos && data.historico) {
+                if (data.predios && data.codigos && data.itens && data.historico) {
                     if (confirm('Substituir todos os dados?')) {
                         predios = data.predios;
-                        produtos = data.produtos;
+                        codigos = data.codigos;
+                        itens = data.itens;
                         historico = data.historico;
                         salvarDados();
                         atualizarTudo();
@@ -377,7 +406,7 @@ document.getElementById('btnImportar').addEventListener('click', () => {
 
 document.getElementById('btnLimparHistorico').addEventListener('click', () => {
     if (usuarioAtual !== 'admin') return;
-    if (confirm('Limpar todo o histórico?')) {
+    if (confirm('Limpar histórico?')) {
         historico = [];
         salvarDados();
         renderizarHistorico();
@@ -385,67 +414,49 @@ document.getElementById('btnLimparHistorico').addEventListener('click', () => {
     }
 });
 
-// ==================== LOGOUT ====================
-document.getElementById('btnLogout').addEventListener('click', () => {
-    mostrarLogin();
-});
-
-// ==================== FILTROS ====================
+// Logout, filtros, data...
+document.getElementById('btnLogout').addEventListener('click', mostrarLogin);
 document.getElementById('filtroSerial').addEventListener('input', renderizarTabela);
 document.getElementById('filtroPredio').addEventListener('change', renderizarTabela);
+document.getElementById('filtroStatus').addEventListener('change', renderizarTabela);
 
-// ==================== DATA ====================
 function atualizarData() {
     document.getElementById('dataAtual').textContent = new Date().toLocaleDateString('pt-BR', {
         weekday: 'short', day: '2-digit', month: '2-digit', year: 'numeric'
     });
 }
 
-// ==================== ATUALIZAÇÃO GLOBAL ====================
 function atualizarTudo() {
     renderizarPredios();
-    atualizarSelectsPredios();
-    atualizarSelectsProdutos();
+    renderizarCodigos();
+    atualizarSelects();
     atualizarResumo();
     renderizarTabela();
     renderizarHistorico();
 }
 
-// ==================== INICIALIZAÇÃO ====================
+// Inicialização
 function verificarSessao() {
     const sessao = sessionStorage.getItem('usuario');
-    if (sessao === 'admin' || sessao === 'cliente') {
-        entrarComo(sessao);
-    } else {
-        mostrarLogin();
-    }
+    if (sessao === 'admin' || sessao === 'cliente') entrarComo(sessao);
+    else mostrarLogin();
 }
-
-// Eventos da tela de login
 document.getElementById('btnAdmin').addEventListener('click', () => {
     document.getElementById('senhaBox').style.display = 'flex';
     document.getElementById('erroSenha').style.display = 'none';
     document.getElementById('senhaAdmin').focus();
 });
-
 document.getElementById('btnEntrarAdmin').addEventListener('click', () => {
-    const senha = document.getElementById('senhaAdmin').value;
-    if (senha === SENHA_ADMIN) {
-        entrarComo('admin');
-    } else {
+    if (document.getElementById('senhaAdmin').value === SENHA_ADMIN) entrarComo('admin');
+    else {
         document.getElementById('erroSenha').style.display = 'block';
         document.getElementById('senhaAdmin').value = '';
     }
 });
-
-document.getElementById('btnCliente').addEventListener('click', () => {
-    entrarComo('cliente');
-});
-
+document.getElementById('btnCliente').addEventListener('click', () => entrarComo('cliente'));
 document.getElementById('senhaAdmin').addEventListener('keydown', (e) => {
     if (e.key === 'Enter') document.getElementById('btnEntrarAdmin').click();
 });
-
 document.addEventListener('DOMContentLoaded', () => {
     carregarDados();
     verificarSessao();
