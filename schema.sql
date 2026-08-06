@@ -32,7 +32,7 @@ CREATE INDEX IF NOT EXISTS idx_itens_status ON itens(status);
 
 CREATE TABLE IF NOT EXISTS historico (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
-  tipo TEXT NOT NULL, -- entrada | baixa | transferencia | import
+  tipo TEXT NOT NULL,
   produto_codigo TEXT,
   produto_nome TEXT,
   serial TEXT,
