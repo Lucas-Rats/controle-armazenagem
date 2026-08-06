@@ -1,16 +1,25 @@
--- Sistema de Controle de Armazenagem — schema do banco D1 (v2)
--- Instalação nova: wrangler d1 execute armazenagem-db --remote --file=./schema.sql
--- Já tem banco rodando? Use migracao-002.sql em vez deste arquivo.
+-- Sistema de Controle de Armazenagem — schema do banco D1
+--
+-- Este arquivo é a definição completa e única do banco. Para aplicar:
+--   npx wrangler d1 execute armazenagem-db --remote --file=./schema.sql
+-- ou cole o conteúdo no console de query do D1 pelo painel.
+--
+-- Todos os CREATE usam IF NOT EXISTS, então rodar duas vezes não quebra
+-- nada — mas também não altera tabelas que já existem. Enquanto o sistema
+-- está em testes, mudança de estrutura = derrubar as tabelas e rodar isto
+-- de novo (o comando de reset está no README).
 
 CREATE TABLE IF NOT EXISTS locais (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   nome TEXT NOT NULL UNIQUE COLLATE NOCASE,
+  ativo INTEGER NOT NULL DEFAULT 1,
   criado_em TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
 CREATE TABLE IF NOT EXISTS produtos (
   codigo TEXT PRIMARY KEY,
   nome TEXT NOT NULL,
+  ativo INTEGER NOT NULL DEFAULT 1,
   criado_em TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
@@ -25,8 +34,8 @@ CREATE TABLE IF NOT EXISTS itens (
   produto_codigo TEXT NOT NULL REFERENCES produtos(codigo),
   local_id INTEGER REFERENCES locais(id),
   status TEXT NOT NULL DEFAULT 'disponivel' CHECK (status IN ('disponivel', 'baixado')),
-  entrada_ref TEXT,   -- nota fiscal / romaneio de recebimento
-  saida_ref TEXT,     -- pedido / romaneio de expedicao
+  entrada_ref TEXT,
+  saida_ref TEXT,   
   criado_em TEXT NOT NULL DEFAULT (datetime('now')),
   baixado_em TEXT
 );
@@ -45,12 +54,12 @@ CREATE INDEX IF NOT EXISTS idx_itens_saida_ref ON itens(saida_ref);
 -- um registro com quantidade = 50, nao 50 registros.
 CREATE TABLE IF NOT EXISTS historico (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
-  tipo TEXT NOT NULL,               -- entrada | baixa | transferencia | import
+  tipo TEXT NOT NULL,
   produto_codigo TEXT,
   produto_nome TEXT,
-  serial TEXT,                      -- preenchido so em operacao de peca unica
+  serial TEXT,
   quantidade INTEGER NOT NULL DEFAULT 1,
-  referencia TEXT,                  -- NF, pedido, romaneio
+  referencia TEXT,
   local_origem TEXT,
   local_destino TEXT,
   criado_em TEXT NOT NULL DEFAULT (datetime('now'))

@@ -118,13 +118,13 @@
 
       <form id="form-entrada" class="cartao cartao--entrada">
         <h3>Recebimento</h3>
-        <p class="cartao__desc">Um produto, um local, quantos seriais forem necessários.</p>
+        <p class="cartao__desc">Escolha o produto e o local uma vez, e informe os seriais que estão entrando.</p>
         <label>Produto<select id="entrada-produto" required></select></label>
         <label>Local de armazenagem<select id="entrada-local"></select></label>
         <label>Nota fiscal / romaneio <span class="opcional">(opcional)</span>
           <input type="text" id="entrada-ref" placeholder="NF 12345" /></label>
         <label>Números de série
-          <textarea id="entrada-seriais" rows="6" placeholder="Um por linha, ou colados do Excel / leitor de código de barras" required></textarea>
+          <textarea id="entrada-seriais" rows="6" placeholder="Um por linha" required></textarea>
         </label>
         <div class="cartao__rodape">
           <span class="contador" id="contador-entrada">0 seriais</span>
@@ -178,6 +178,10 @@
           <p class="cartao__msg"></p>
         </form>
         <ul class="lista" id="lista-produtos"></ul>
+        <details class="arquivados hidden" id="bloco-arquivados-produtos">
+          <summary>Arquivados (<span id="conta-arquivados-produtos">0</span>)</summary>
+          <ul class="lista" id="arquivados-produtos"></ul>
+        </details>
       </div>
       <div>
         <form id="form-local" class="cartao">
@@ -187,6 +191,10 @@
           <p class="cartao__msg"></p>
         </form>
         <ul class="lista" id="lista-locais"></ul>
+        <details class="arquivados hidden" id="bloco-arquivados-locais">
+          <summary>Arquivados (<span id="conta-arquivados-locais">0</span>)</summary>
+          <ul class="lista" id="arquivados-locais"></ul>
+        </details>
       </div>
     </div>
   </section>

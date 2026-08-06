@@ -35,9 +35,9 @@ function pedacos(lista, tamanho) {
   return saida;
 }
 
-// Aceita seriais colados em qualquer formato: um por linha, separados por
-// vírgula, ponto e vírgula ou tabulação (o que sai de um leitor de código
-// de barras ou de uma coluna copiada do Excel).
+// Aceita a lista de seriais separada por quebra de linha, vírgula,
+// ponto e vírgula ou tabulação, para não depender de o operador colar
+// exatamente no formato esperado.
 function normalizarSeriais(entrada) {
   const bruto = Array.isArray(entrada) ? entrada.join('\n') : String(entrada || '');
   const lista = bruto
@@ -205,10 +205,11 @@ export default {
       if (pathname === '/api/estoque' && method === 'GET') {
         const [porProduto, porLocal, totais] = await Promise.all([
           env.DB.prepare(
-            `SELECT p.codigo, p.nome, COUNT(i.id) as quantidade
+            `SELECT p.codigo, p.nome, p.ativo, COUNT(i.id) as quantidade
              FROM produtos p
              LEFT JOIN itens i ON i.produto_codigo = p.codigo AND i.status = 'disponivel'
-             GROUP BY p.codigo, p.nome
+             GROUP BY p.codigo, p.nome, p.ativo
+             HAVING p.ativo = 1 OR COUNT(i.id) > 0
              ORDER BY p.nome`
           ).all(),
           env.DB.prepare(
@@ -319,11 +320,30 @@ export default {
 
       if (pathname.match(/^\/api\/produtos\/[^/]+$/) && method === 'DELETE') {
         const codigo = decodeURIComponent(pathname.split('/').pop());
-        const { total } = await env.DB.prepare(
-          `SELECT COUNT(*) as total FROM itens WHERE produto_codigo = ? AND status = 'disponivel'`
+        const c = await env.DB.prepare(
+          `SELECT COUNT(*) as total,
+                  SUM(CASE WHEN status = 'disponivel' THEN 1 ELSE 0 END) as disponiveis
+           FROM itens WHERE produto_codigo = ?`
         ).bind(codigo).first();
-        if (total > 0) return erro(`produto tem ${total} item(ns) disponível(is) — dê baixa neles primeiro`, 409);
+
+        if (c.disponiveis > 0) {
+          return erro(`produto tem ${c.disponiveis} peça(s) em estoque — dê baixa nelas primeiro`, 409);
+        }
+        if (c.total > 0) {
+          return erro(
+            `produto tem histórico de ${c.total} peça(s) já movimentada(s). Excluir apagaria esse registro — use Arquivar para tirá-lo das listas mantendo o histórico.`,
+            409
+          );
+        }
         await env.DB.prepare(`DELETE FROM produtos WHERE codigo = ?`).bind(codigo).run();
+        return json({ ok: true });
+      }
+
+      if (pathname.match(/^\/api\/produtos\/[^/]+$/) && method === 'PATCH') {
+        const codigo = decodeURIComponent(pathname.split('/').pop());
+        const { ativo } = await request.json();
+        await env.DB.prepare(`UPDATE produtos SET ativo = ? WHERE codigo = ?`)
+          .bind(ativo ? 1 : 0, codigo).run();
         return json({ ok: true });
       }
 
@@ -340,11 +360,29 @@ export default {
 
       if (pathname.match(/^\/api\/locais\/\d+$/) && method === 'DELETE') {
         const id = pathname.split('/').pop();
-        const { total } = await env.DB.prepare(
-          `SELECT COUNT(*) as total FROM itens WHERE local_id = ? AND status = 'disponivel'`
+        const c = await env.DB.prepare(
+          `SELECT COUNT(*) as total,
+                  SUM(CASE WHEN status = 'disponivel' THEN 1 ELSE 0 END) as disponiveis
+           FROM itens WHERE local_id = ?`
         ).bind(id).first();
-        if (total > 0) return erro(`local tem ${total} item(ns) disponível(is) — transfira-os primeiro`, 409);
+
+        if (c.disponiveis > 0) {
+          return erro(`local tem ${c.disponiveis} peça(s) em estoque — transfira-as primeiro`, 409);
+        }
+        if (c.total > 0) {
+          return erro(
+            `local tem histórico de ${c.total} peça(s) que passaram por ele. Excluir apagaria esse registro — use Arquivar para tirá-lo das listas mantendo o histórico.`,
+            409
+          );
+        }
         await env.DB.prepare(`DELETE FROM locais WHERE id = ?`).bind(id).run();
+        return json({ ok: true });
+      }
+
+      if (pathname.match(/^\/api\/locais\/\d+$/) && method === 'PATCH') {
+        const id = pathname.split('/').pop();
+        const { ativo } = await request.json();
+        await env.DB.prepare(`UPDATE locais SET ativo = ? WHERE id = ?`).bind(ativo ? 1 : 0, id).run();
         return json({ ok: true });
       }
 

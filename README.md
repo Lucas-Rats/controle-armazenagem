@@ -32,11 +32,10 @@ do produto é quantas peças ele tem disponíveis.
 
 ## Operações
 
-**Recebimento** — escolhe o produto, o local e cola a lista de seriais
-(um por linha, ou colados direto do Excel ou de um leitor de código de
-barras). O sistema registra cada serial como uma peça, avisa quais foram
-recusados por já existirem, e lança uma única linha no histórico com a
-quantidade total.
+**Recebimento** — escolhe o produto, o local e informa a lista de seriais,
+um por linha. O sistema registra cada serial como uma peça, avisa quais
+foram recusados por já existirem, e lança uma única linha no histórico com
+a quantidade total.
 
 **Expedição** — cola os seriais que estão saindo, opcionalmente com o
 número do pedido. Dá baixa em todos de uma vez e mostra quais não foram
@@ -48,6 +47,16 @@ todos de uma vez, mantendo serial e produto.
 Todas as três aceitam desde 1 até 500 seriais por operação, e todas
 relatam exatamente o que entrou e o que foi recusado — nada falha em
 silêncio.
+
+## Excluir vs. arquivar
+
+Produto ou local **sem nenhuma peça associada** pode ser excluído de vez.
+
+Assim que uma peça passa por ele, excluir deixa de ser possível: apagar o
+registro destruiria a rastreabilidade das peças que já foram expedidas.
+Nesse caso a opção é **arquivar** — ele some das listas e dos campos de
+seleção, mas continua no histórico, e pode ser reativado a qualquer
+momento.
 
 ## Regras aplicadas pelo servidor
 
@@ -79,18 +88,33 @@ npx wrangler secret put SESSION_SECRET   # openssl rand -base64 32
 npm run deploy
 ```
 
-## Já tem o sistema rodando?
+## Recriar o banco (enquanto está em testes)
 
-Se o banco já está em produção com dados, **não rode o schema.sql** — ele
-é para instalação nova. Rode a migração, que adiciona as colunas novas
-sem tocar em nada do que já existe:
+O `schema.sql` é a única definição do banco. Enquanto o sistema não está
+em uso real, mudança de estrutura não usa migração: derruba as tabelas e
+roda o schema de novo.
 
-```bash
-npx wrangler d1 execute armazenagem-db --remote --file=./migracao-002.sql
+No console de query do D1:
+
+```sql
+DROP TABLE IF EXISTS itens;
+DROP TABLE IF EXISTS historico;
+DROP TABLE IF EXISTS produtos;
+DROP TABLE IF EXISTS locais;
+DROP TABLE IF EXISTS login_tentativas;
 ```
 
-Ou cole o conteúdo do `migracao-002.sql` no console do D1 pelo painel.
-Depois é só dar push — o build automático publica o resto.
+Depois cole o conteúdo do `schema.sql` e execute. O `database_id` não
+muda, então o `wrangler.jsonc` continua igual e os secrets continuam
+valendo.
+
+A ordem importa: `itens` sai primeiro porque aponta para `produtos` e
+`locais`.
+
+**Quando entrar em produção isso muda.** A partir do momento em que
+existirem dados reais, alterações de estrutura passam a exigir
+`ALTER TABLE` num arquivo de migração — derrubar tabela deixa de ser uma
+opção.
 
 ## Deploy pelo GitHub
 

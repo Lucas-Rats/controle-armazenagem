@@ -184,26 +184,63 @@ async function carregarHistorico() {
 
 // ==================== Cadastros ====================
 
+function linhaCadastro(rotulo, meta, botoes) {
+  return `<li><span>${rotulo}${meta}</span><span class="lista__acoes">${botoes}</span></li>`;
+}
+
 async function carregarProdutos() {
   produtosCache = await api('/api/produtos');
-  const opcoes = produtosCache.map((p) =>
+  const ativos = produtosCache.filter((p) => p.ativo !== 0);
+  const arquivados = produtosCache.filter((p) => p.ativo === 0);
+
+  // Só produtos ativos aparecem no formulário de recebimento
+  $('#entrada-produto').innerHTML = ativos.map((p) =>
     `<option value="${escapar(p.codigo)}">${escapar(p.codigo)} — ${escapar(p.nome)}</option>`).join('');
-  $('#entrada-produto').innerHTML = opcoes;
-  $('#filtro-produto').innerHTML = '<option value="">Todos os produtos</option>' + opcoes;
-  $('#lista-produtos').innerHTML = produtosCache.map((p) =>
-    `<li><span><strong class="col-codigo">${escapar(p.codigo)}</strong> ${escapar(p.nome)}</span>
-      <button class="btn btn--ghost btn-excluir-produto" data-codigo="${escapar(p.codigo)}">Excluir</button></li>`).join('');
+  // O filtro mostra todos, para conseguir consultar peças de produtos arquivados
+  $('#filtro-produto').innerHTML = '<option value="">Todos os produtos</option>' +
+    produtosCache.map((p) =>
+      `<option value="${escapar(p.codigo)}">${escapar(p.codigo)} — ${escapar(p.nome)}${p.ativo === 0 ? ' (arquivado)' : ''}</option>`).join('');
+
+  $('#lista-produtos').innerHTML = ativos.map((p) => linhaCadastro(
+    `<strong class="col-codigo">${escapar(p.codigo)}</strong> ${escapar(p.nome)}`, '',
+    `<button class="btn btn--ghost btn-arquivar-produto" data-codigo="${escapar(p.codigo)}" data-ativo="0">Arquivar</button>
+     <button class="btn btn--ghost btn-excluir-produto" data-codigo="${escapar(p.codigo)}">Excluir</button>`
+  )).join('') || '<li class="lista__meta">Nenhum produto cadastrado.</li>';
+
+  $('#arquivados-produtos').innerHTML = arquivados.map((p) => linhaCadastro(
+    `<strong class="col-codigo">${escapar(p.codigo)}</strong> ${escapar(p.nome)}`, '',
+    `<button class="btn btn--ghost btn-arquivar-produto" data-codigo="${escapar(p.codigo)}" data-ativo="1">Reativar</button>
+     <button class="btn btn--ghost btn-excluir-produto" data-codigo="${escapar(p.codigo)}">Excluir</button>`
+  )).join('');
+  $('#bloco-arquivados-produtos').classList.toggle('hidden', arquivados.length === 0);
+  $('#conta-arquivados-produtos').textContent = arquivados.length;
 }
 
 async function carregarLocais() {
   locaisCache = await api('/api/locais');
-  const opcoes = locaisCache.map((l) => `<option value="${l.id}">${escapar(l.nome)}</option>`).join('');
-  $('#entrada-local').innerHTML = '<option value="">— sem local —</option>' + opcoes;
-  $('#transferencia-local').innerHTML = '<option value="">Selecione…</option>' + opcoes;
-  $('#filtro-local').innerHTML = '<option value="">Todos os locais</option>' + opcoes;
-  $('#lista-locais').innerHTML = locaisCache.map((l) =>
-    `<li><span>${escapar(l.nome)}</span>
-      <button class="btn btn--ghost btn-excluir-local" data-id="${l.id}" data-nome="${escapar(l.nome)}">Excluir</button></li>`).join('');
+  const ativos = locaisCache.filter((l) => l.ativo !== 0);
+  const arquivados = locaisCache.filter((l) => l.ativo === 0);
+  const opcoesAtivas = ativos.map((l) => `<option value="${l.id}">${escapar(l.nome)}</option>`).join('');
+
+  $('#entrada-local').innerHTML = '<option value="">— sem local —</option>' + opcoesAtivas;
+  $('#transferencia-local').innerHTML = '<option value="">Selecione…</option>' + opcoesAtivas;
+  $('#filtro-local').innerHTML = '<option value="">Todos os locais</option>' +
+    locaisCache.map((l) =>
+      `<option value="${l.id}">${escapar(l.nome)}${l.ativo === 0 ? ' (arquivado)' : ''}</option>`).join('');
+
+  $('#lista-locais').innerHTML = ativos.map((l) => linhaCadastro(
+    escapar(l.nome), '',
+    `<button class="btn btn--ghost btn-arquivar-local" data-id="${l.id}" data-ativo="0">Arquivar</button>
+     <button class="btn btn--ghost btn-excluir-local" data-id="${l.id}" data-nome="${escapar(l.nome)}">Excluir</button>`
+  )).join('') || '<li class="lista__meta">Nenhum local cadastrado.</li>';
+
+  $('#arquivados-locais').innerHTML = arquivados.map((l) => linhaCadastro(
+    escapar(l.nome), '',
+    `<button class="btn btn--ghost btn-arquivar-local" data-id="${l.id}" data-ativo="1">Reativar</button>
+     <button class="btn btn--ghost btn-excluir-local" data-id="${l.id}" data-nome="${escapar(l.nome)}">Excluir</button>`
+  )).join('');
+  $('#bloco-arquivados-locais').classList.toggle('hidden', arquivados.length === 0);
+  $('#conta-arquivados-locais').textContent = arquivados.length;
 }
 
 async function recarregarTudo() {
@@ -428,27 +465,47 @@ $('#form-local').addEventListener('submit', async (ev) => {
   } catch (e) { mensagemCartao(form, e.message, 'erro'); }
 });
 
-$('#lista-produtos').addEventListener('click', async (ev) => {
-  if (!ev.target.classList.contains('btn-excluir-produto')) return;
-  const codigo = ev.target.dataset.codigo;
-  if (!confirm(`Excluir o produto ${codigo}?`)) return;
+async function acaoProduto(ev) {
+  const alvo = ev.target;
+  const codigo = alvo.dataset.codigo;
+  if (!codigo) return;
   try {
-    await api(`/api/produtos/${encodeURIComponent(codigo)}`, { method: 'DELETE' });
-    mostrarToast('Produto excluído.');
+    if (alvo.classList.contains('btn-excluir-produto')) {
+      if (!confirm(`Excluir o produto ${codigo} de vez?`)) return;
+      await api(`/api/produtos/${encodeURIComponent(codigo)}`, { method: 'DELETE' });
+      mostrarToast('Produto excluído.');
+    } else if (alvo.classList.contains('btn-arquivar-produto')) {
+      const ativo = alvo.dataset.ativo === '1';
+      await api(`/api/produtos/${encodeURIComponent(codigo)}`, {
+        method: 'PATCH', body: JSON.stringify({ ativo }),
+      });
+      mostrarToast(ativo ? 'Produto reativado.' : 'Produto arquivado.');
+    } else return;
     await Promise.all([carregarProdutos(), carregarEstoque()]);
   } catch (e) { mostrarToast(e.message, 'erro'); }
-});
+}
+$('#lista-produtos').addEventListener('click', acaoProduto);
+$('#arquivados-produtos').addEventListener('click', acaoProduto);
 
-$('#lista-locais').addEventListener('click', async (ev) => {
-  if (!ev.target.classList.contains('btn-excluir-local')) return;
-  const { id, nome } = ev.target.dataset;
-  if (!confirm(`Excluir o local "${nome}"?`)) return;
+async function acaoLocal(ev) {
+  const alvo = ev.target;
+  const { id, nome } = alvo.dataset;
+  if (!id) return;
   try {
-    await api(`/api/locais/${id}`, { method: 'DELETE' });
-    mostrarToast('Local excluído.');
+    if (alvo.classList.contains('btn-excluir-local')) {
+      if (!confirm(`Excluir o local "${nome}" de vez?`)) return;
+      await api(`/api/locais/${id}`, { method: 'DELETE' });
+      mostrarToast('Local excluído.');
+    } else if (alvo.classList.contains('btn-arquivar-local')) {
+      const ativo = alvo.dataset.ativo === '1';
+      await api(`/api/locais/${id}`, { method: 'PATCH', body: JSON.stringify({ ativo }) });
+      mostrarToast(ativo ? 'Local reativado.' : 'Local arquivado.');
+    } else return;
     await Promise.all([carregarLocais(), carregarEstoque(), carregarItens()]);
   } catch (e) { mostrarToast(e.message, 'erro'); }
-});
+}
+$('#lista-locais').addEventListener('click', acaoLocal);
+$('#arquivados-locais').addEventListener('click', acaoLocal);
 
 $('#btn-limpar-historico').addEventListener('click', async () => {
   if (!confirm('Limpar todo o histórico? Não pode ser desfeito.')) return;
