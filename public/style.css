@@ -266,3 +266,42 @@ button, input, select, textarea { font-family: inherit; font-size: inherit; colo
   border-radius: var(--radius); padding: 10px 12px; margin: 0 0 16px;
 }
 .dialog__acoes { display: flex; justify-content: flex-end; gap: 8px; flex-wrap: wrap; }
+
+/* ---------- Impressão / salvar em PDF ---------- */
+
+.so-impressao { display: none; }
+
+@media print {
+  :root { --bg: #fff; --surface: #fff; --surface-2: #fff; }
+  body { background: #fff; font-size: 11pt; }
+
+  /* Fora tudo que é controle: na folha impressa não se clica em nada */
+  .topbar, .dialog, .acoes-exportacao, .abas, .filtros, .toast,
+  .grid-ops, .grid-cadastros, .linha-acoes, .arquivados,
+  #btn-limpar-historico, .nota { display: none !important; }
+
+  .so-impressao { display: block; margin-bottom: 18px; }
+  .so-impressao h1 { font-size: 16pt; margin: 0 0 4px; }
+  .so-impressao p { font-size: 9pt; color: #555; margin: 0; }
+
+  .conteudo { max-width: none; padding: 0; gap: 18px; }
+  .painel { border: none; border-radius: 0; padding: 0; page-break-inside: auto; }
+  .painel h2 { font-size: 10pt; margin-bottom: 8px; }
+
+  .totais { border: 1px solid #999; grid-template-columns: repeat(4, 1fr); }
+  .total { padding: 8px 10px; }
+  .total__num { font-size: 15pt; }
+
+  /* Mostra as duas visões: quem imprime quer o resumo e o detalhe */
+  #vista-produto, #vista-serial { display: block !important; }
+
+  .tabela { font-size: 9pt; }
+  .tabela th { border-bottom: 1px solid #000; }
+  .tabela td { border-bottom: 1px solid #ddd; }
+  .tabela tr { page-break-inside: avoid; }
+  thead { display: table-header-group; }
+
+  .carimbo { border: 1px solid #666; transform: none; }
+  .chip { border: 1px solid #ccc; }
+  .linha-seriais { display: none; }
+}

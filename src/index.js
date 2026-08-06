@@ -35,6 +35,28 @@ function pedacos(lista, tamanho) {
   return saida;
 }
 
+// CSV para abrir no Excel em português:
+//  - o BOM no início faz o Excel entender que o arquivo é UTF-8; sem ele,
+//    todo acento vira caractere estranho.
+//  - o separador é ponto e vírgula porque no Excel pt-BR a vírgula é o
+//    separador decimal, e usar vírgula joga tudo numa coluna só.
+function montarCsv(linhas) {
+  const campo = (v) => {
+    const t = String(v ?? '');
+    return /[";\r\n]/.test(t) ? `"${t.replace(/"/g, '""')}"` : t;
+  };
+  return '\uFEFF' + linhas.map((l) => l.map(campo).join(';')).join('\r\n');
+}
+
+function respostaCsv(linhas, nomeArquivo) {
+  return new Response(montarCsv(linhas), {
+    headers: {
+      'content-type': 'text/csv; charset=utf-8',
+      'content-disposition': `attachment; filename="${nomeArquivo}"`,
+    },
+  });
+}
+
 // Aceita a lista de seriais separada por quebra de linha, vírgula,
 // ponto e vírgula ou tabulação, para não depender de o operador colar
 // exatamente no formato esperado.
@@ -292,6 +314,61 @@ export default {
           `SELECT * FROM historico ORDER BY criado_em DESC LIMIT 500`
         ).all();
         return json(results);
+      }
+
+      // Relatório para planilha. Dois recortes: o resumo gerencial
+      // (quanto tem de cada produto) e a lista peça a peça (rastreio).
+      if (pathname === '/api/relatorio.csv' && method === 'GET') {
+        const admin = await ehAdmin(request, env);
+        const tipo = url.searchParams.get('tipo') === 'pecas' ? 'pecas' : 'estoque';
+        const hoje = new Date().toISOString().slice(0, 10);
+
+        if (tipo === 'estoque') {
+          const { results } = await env.DB.prepare(
+            `SELECT p.codigo, p.nome,
+                    COUNT(i.id) as quantidade,
+                    COALESCE(l.nome, 'Sem local') as local_nome
+             FROM produtos p
+             LEFT JOIN itens i ON i.produto_codigo = p.codigo AND i.status = 'disponivel'
+             LEFT JOIN locais l ON l.id = i.local_id
+             WHERE p.ativo = 1 OR i.id IS NOT NULL
+             GROUP BY p.codigo, p.nome, l.nome
+             ORDER BY p.nome, l.nome`
+          ).all();
+
+          const linhas = [['Codigo', 'Produto', 'Local', 'Quantidade']];
+          for (const r of results) {
+            linhas.push([r.codigo, r.nome, r.quantidade > 0 ? r.local_nome : '', r.quantidade]);
+          }
+          return respostaCsv(linhas, `estoque-${hoje}.csv`);
+        }
+
+        // Cliente só exporta o que está disponível
+        const statusPedido = url.searchParams.get('status');
+        const status = admin && statusPedido ? statusPedido : 'disponivel';
+        const { results } = await env.DB.prepare(
+          `SELECT itens.serial, itens.produto_codigo, produtos.nome as produto_nome,
+                  locais.nome as local_nome, itens.status,
+                  itens.entrada_ref, itens.saida_ref, itens.criado_em, itens.baixado_em
+           FROM itens
+           JOIN produtos ON produtos.codigo = itens.produto_codigo
+           LEFT JOIN locais ON locais.id = itens.local_id
+           WHERE itens.status = ?
+           ORDER BY produtos.nome, itens.serial`
+        ).bind(status).all();
+
+        const linhas = [[
+          'Serial', 'Codigo', 'Produto', 'Local', 'Status',
+          'Nota de entrada', 'Pedido de saida', 'Entrada em', 'Baixa em',
+        ]];
+        for (const r of results) {
+          linhas.push([
+            r.serial, r.produto_codigo, r.produto_nome, r.local_nome || '',
+            r.status === 'disponivel' ? 'Disponivel' : 'Expedido',
+            r.entrada_ref || '', r.saida_ref || '', r.criado_em || '', r.baixado_em || '',
+          ]);
+        }
+        return respostaCsv(linhas, `pecas-${status}-${hoje}.csv`);
       }
 
       if (pathname === '/api/export' && method === 'GET') {

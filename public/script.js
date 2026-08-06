@@ -613,6 +613,30 @@ $('#btn-limpar-historico').addEventListener('click', async () => {
 
 // ==================== Exportar / importar ====================
 
+function baixarArquivo(url) {
+  const a = document.createElement('a');
+  a.href = url;
+  a.click();
+}
+
+// O CSV vem pronto do servidor; basta apontar o navegador para a rota,
+// que já responde com cabeçalho de download.
+$('#btn-csv-estoque').addEventListener('click', () => {
+  baixarArquivo('/api/relatorio.csv?tipo=estoque');
+});
+
+$('#btn-csv-pecas').addEventListener('click', () => {
+  const status = admin ? $('#filtro-status').value : 'disponivel';
+  baixarArquivo(`/api/relatorio.csv?tipo=pecas&status=${status}`);
+});
+
+$('#btn-imprimir').addEventListener('click', () => {
+  const agora = new Date().toLocaleString('pt-BR');
+  $('#cabecalho-impressao').innerHTML =
+    `<h1>Controle de Armazenagem</h1><p>Relatório emitido em ${agora}</p>`;
+  window.print();
+});
+
 $('#btn-exportar').addEventListener('click', async () => {
   const dados = await api('/api/export');
   const blob = new Blob([JSON.stringify(dados, null, 2)], { type: 'application/json' });

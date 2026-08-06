@@ -48,6 +48,8 @@
   </div>
 </dialog>
 
+<div class="so-impressao" id="cabecalho-impressao"></div>
+
 <main class="conteudo">
 
   <!-- Totais -->
@@ -63,9 +65,12 @@
     <div class="painel__cabecalho">
       <h2>Estoque</h2>
       <div class="acoes-exportacao">
-        <button id="btn-exportar" class="btn btn--ghost">Exportar JSON</button>
+        <button id="btn-csv-estoque" class="btn btn--ghost">Planilha: resumo</button>
+        <button id="btn-csv-pecas" class="btn btn--ghost">Planilha: peça a peça</button>
+        <button id="btn-imprimir" class="btn btn--ghost">Imprimir / PDF</button>
+        <button id="btn-exportar" class="btn btn--ghost" title="Arquivo de backup, para restaurar no próprio sistema">Backup</button>
         <label class="btn btn--ghost admin-only hidden">
-          Importar JSON<input type="file" id="input-importar" accept="application/json" hidden />
+          Restaurar<input type="file" id="input-importar" accept="application/json" hidden />
         </label>
       </div>
     </div>

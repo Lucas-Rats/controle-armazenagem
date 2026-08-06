@@ -126,7 +126,25 @@ Os secrets (`ADMIN_PASSWORD` e `SESSION_SECRET`) são configurados no
 painel do Worker, em Settings > Variables and Secrets. Eles nunca vão
 para o repositório.
 
-## Backup
+## Relatórios e backup
 
-O botão **Exportar JSON** baixa produtos, locais, peças e histórico.
-Funciona para administrador e para cliente.
+São coisas diferentes e ficam em botões diferentes:
+
+**Planilha: resumo** — CSV com uma linha por produto e local, com a
+quantidade. É o relatório gerencial: quanto tem de cada coisa e onde.
+
+**Planilha: peça a peça** — CSV com uma linha por peça: serial, produto,
+local, status, nota de entrada e pedido de saída. É o relatório de
+rastreio. Para o administrador, respeita o filtro de status escolhido na
+tela (disponíveis ou já expedidos).
+
+Os dois abrem direto no Excel, com acentuação correta e colunas
+separadas — o arquivo sai com BOM UTF-8 e ponto e vírgula, que é o que o
+Excel em português espera.
+
+**Imprimir / PDF** — usa a impressão do navegador. Em "Destino", escolha
+"Salvar como PDF". Serve para anexar em e-mail ou imprimir e assinar; a
+folha sai sem botões, formulários nem filtros.
+
+**Backup** — arquivo JSON com tudo. Não é relatório: é o formato que o
+botão **Restaurar** consegue ler de volta. Guarde periodicamente.
