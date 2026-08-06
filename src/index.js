@@ -12,7 +12,6 @@
 
 const COOKIE_SESSAO = 'sessao';
 const SESSAO_HORAS = 12;
-const HISTORICO_LIMITE = 500;
 const LOGIN_MAX_TENTATIVAS = 5;
 const LOGIN_JANELA_MIN = 15;
 const LOTE_MAX = 500;   // seriais por operação
@@ -136,6 +135,9 @@ async function ehAdmin(request, env) {
   return sessaoValida(pegarCookie(request, COOKIE_SESSAO), env.SESSION_SECRET);
 }
 
+// O histórico não tem teto: ele é o registro de auditoria do sistema, e
+// descartar linha antiga em silêncio derrota o propósito. A leitura é
+// paginada para a tela não puxar tudo de uma vez.
 async function registrarHistorico(env, e) {
   await env.DB.prepare(
     `INSERT INTO historico
@@ -145,13 +147,6 @@ async function registrarHistorico(env, e) {
     e.tipo, e.produto_codigo || null, e.produto_nome || null, e.serial || null,
     e.quantidade || 1, e.referencia || null, e.local_origem || null, e.local_destino || null
   ).run();
-
-  const { total } = await env.DB.prepare(`SELECT COUNT(*) as total FROM historico`).first();
-  if (total > HISTORICO_LIMITE) {
-    await env.DB.prepare(
-      `DELETE FROM historico WHERE id IN (SELECT id FROM historico ORDER BY criado_em ASC LIMIT ?)`
-    ).bind(total - HISTORICO_LIMITE).run();
-  }
 }
 
 // Busca os itens correspondentes a uma lista de seriais, em pedaços para
@@ -194,6 +189,8 @@ export default {
         if (total >= LOGIN_MAX_TENTATIVAS) {
           return erro(`muitas tentativas — aguarde ${LOGIN_JANELA_MIN} minutos`, 429);
         }
+        // Tentativas fora da janela não servem mais para nada
+        await env.DB.prepare(`DELETE FROM login_tentativas WHERE criado_em <= ?`).bind(desde).run();
         const corpo = await request.json().catch(() => ({}));
         if (!env.ADMIN_PASSWORD || corpo.senha !== env.ADMIN_PASSWORD) {
           await env.DB.prepare(`INSERT INTO login_tentativas (ip) VALUES (?)`).bind(ip).run();
@@ -310,10 +307,20 @@ export default {
       }
 
       if (pathname === '/api/historico' && method === 'GET') {
-        const { results } = await env.DB.prepare(
-          `SELECT * FROM historico ORDER BY criado_em DESC LIMIT 500`
-        ).all();
-        return json(results);
+        const limite = Math.min(Number(url.searchParams.get('limite')) || 100, 500);
+        const antes = url.searchParams.get('antes');
+
+        const { results } = antes
+          ? await env.DB.prepare(
+              `SELECT * FROM historico WHERE id < ? ORDER BY id DESC LIMIT ?`
+            ).bind(antes, limite + 1).all()
+          : await env.DB.prepare(
+              `SELECT * FROM historico ORDER BY id DESC LIMIT ?`
+            ).bind(limite + 1).all();
+
+        const temMais = results.length > limite;
+        const { total } = await env.DB.prepare(`SELECT COUNT(*) as total FROM historico`).first();
+        return json({ registros: results.slice(0, limite), tem_mais: temMais, total });
       }
 
       // Relatório para planilha. Dois recortes: o resumo gerencial
@@ -378,7 +385,7 @@ export default {
           env.DB.prepare(
             `SELECT itens.*, locais.nome as local_nome FROM itens LEFT JOIN locais ON locais.id = itens.local_id`
           ).all(),
-          env.DB.prepare(`SELECT * FROM historico ORDER BY criado_em DESC LIMIT 500`).all(),
+          env.DB.prepare(`SELECT * FROM historico ORDER BY id DESC`).all(),
         ]);
         return json({
           exportado_em: new Date().toISOString(),
@@ -442,9 +449,48 @@ export default {
 
       if (pathname.match(/^\/api\/produtos\/[^/]+$/) && method === 'PATCH') {
         const codigo = decodeURIComponent(pathname.split('/').pop());
-        const { ativo } = await request.json();
-        await env.DB.prepare(`UPDATE produtos SET ativo = ? WHERE codigo = ?`)
-          .bind(ativo ? 1 : 0, codigo).run();
+        const corpo = await request.json();
+
+        const atual = await env.DB.prepare(`SELECT * FROM produtos WHERE codigo = ?`).bind(codigo).first();
+        if (!atual) return erro('produto não encontrado', 404);
+
+        if (typeof corpo.ativo === 'boolean') {
+          await env.DB.prepare(`UPDATE produtos SET ativo = ? WHERE codigo = ?`)
+            .bind(corpo.ativo ? 1 : 0, codigo).run();
+        }
+
+        if (corpo.nome && corpo.nome.trim() && corpo.nome.trim() !== atual.nome) {
+          await env.DB.prepare(`UPDATE produtos SET nome = ? WHERE codigo = ?`)
+            .bind(corpo.nome.trim(), codigo).run();
+        }
+
+        // Trocar o código é diferente de trocar o nome: o código é o
+        // identificador que as peças e o histórico apontam, então a troca
+        // precisa arrastar as duas coisas junto. Faz-se criando o novo,
+        // repontando o que aponta pro antigo, e só então removendo o velho.
+        const novoCodigo = corpo.codigo?.trim().toUpperCase();
+        if (novoCodigo && novoCodigo !== codigo) {
+          const existe = await env.DB.prepare(`SELECT 1 FROM produtos WHERE codigo = ?`)
+            .bind(novoCodigo).first();
+          if (existe) return erro(`já existe um produto com o código ${novoCodigo}`, 409);
+
+          const nomeFinal = corpo.nome?.trim() || atual.nome;
+          await env.DB.prepare(
+            `INSERT INTO produtos (codigo, nome, ativo, criado_em) VALUES (?, ?, ?, ?)`
+          ).bind(novoCodigo, nomeFinal, atual.ativo, atual.criado_em).run();
+
+          await env.DB.prepare(`UPDATE itens SET produto_codigo = ? WHERE produto_codigo = ?`)
+            .bind(novoCodigo, codigo).run();
+          await env.DB.prepare(`UPDATE historico SET produto_codigo = ? WHERE produto_codigo = ?`)
+            .bind(novoCodigo, codigo).run();
+          await env.DB.prepare(`DELETE FROM produtos WHERE codigo = ?`).bind(codigo).run();
+
+          await registrarHistorico(env, {
+            tipo: 'correcao', produto_codigo: novoCodigo, produto_nome: nomeFinal,
+            quantidade: 1, referencia: `código corrigido de ${codigo}`,
+          });
+        }
+
         return json({ ok: true });
       }
 
@@ -493,8 +539,20 @@ export default {
 
       if (pathname.match(/^\/api\/locais\/\d+$/) && method === 'PATCH') {
         const id = pathname.split('/').pop();
-        const { ativo } = await request.json();
-        await env.DB.prepare(`UPDATE locais SET ativo = ? WHERE id = ?`).bind(ativo ? 1 : 0, id).run();
+        const corpo = await request.json();
+
+        if (typeof corpo.ativo === 'boolean') {
+          await env.DB.prepare(`UPDATE locais SET ativo = ? WHERE id = ?`)
+            .bind(corpo.ativo ? 1 : 0, id).run();
+        }
+        if (corpo.nome && corpo.nome.trim()) {
+          try {
+            await env.DB.prepare(`UPDATE locais SET nome = ? WHERE id = ?`)
+              .bind(corpo.nome.trim(), id).run();
+          } catch {
+            return erro('já existe um local com esse nome', 409);
+          }
+        }
         return json({ ok: true });
       }
 
@@ -671,6 +729,61 @@ export default {
       }
 
       // ---------- Operações de peça única (botões da tabela) ----------
+
+      // Correção de serial digitado errado. Só vale para peça disponível:
+      // peça já expedida é registro fechado. Fica marcado no histórico como
+      // correção, e não como movimentação — a peça não saiu nem mudou de lugar.
+      if (pathname.match(/^\/api\/itens\/\d+$/) && method === 'PATCH') {
+        const id = pathname.split('/').pop();
+        const { serial } = await request.json();
+        if (!serial || !serial.trim()) return erro('informe o novo número de série');
+
+        const item = await env.DB.prepare(
+          `SELECT itens.*, produtos.nome as produto_nome, locais.nome as local_nome
+           FROM itens JOIN produtos ON produtos.codigo = itens.produto_codigo
+           LEFT JOIN locais ON locais.id = itens.local_id
+           WHERE itens.id = ? AND itens.status = 'disponivel'`
+        ).bind(id).first();
+        if (!item) return erro('peça não encontrada ou já expedida', 404);
+
+        const novo = serial.trim();
+        if (novo === item.serial) return json({ ok: true });
+
+        try {
+          await env.DB.prepare(`UPDATE itens SET serial = ? WHERE id = ?`).bind(novo, id).run();
+        } catch {
+          return erro('já existe uma peça disponível com esse serial', 409);
+        }
+
+        await registrarHistorico(env, {
+          tipo: 'correcao', produto_codigo: item.produto_codigo, produto_nome: item.produto_nome,
+          serial: novo, quantidade: 1,
+          referencia: `serial corrigido de ${item.serial}`, local_origem: item.local_nome,
+        });
+        return json({ ok: true });
+      }
+
+      // Remoção de peça cadastrada por engano. Existe para não obrigar o
+      // operador a dar uma baixa falsa, que registraria uma saída que nunca
+      // aconteceu no relatório do cliente.
+      if (pathname.match(/^\/api\/itens\/\d+$/) && method === 'DELETE') {
+        const id = pathname.split('/').pop();
+        const item = await env.DB.prepare(
+          `SELECT itens.*, produtos.nome as produto_nome, locais.nome as local_nome
+           FROM itens JOIN produtos ON produtos.codigo = itens.produto_codigo
+           LEFT JOIN locais ON locais.id = itens.local_id
+           WHERE itens.id = ? AND itens.status = 'disponivel'`
+        ).bind(id).first();
+        if (!item) return erro('peça não encontrada ou já expedida', 404);
+
+        await env.DB.prepare(`DELETE FROM itens WHERE id = ?`).bind(id).run();
+        await registrarHistorico(env, {
+          tipo: 'correcao', produto_codigo: item.produto_codigo, produto_nome: item.produto_nome,
+          serial: item.serial, quantidade: 1,
+          referencia: 'cadastro removido por engano', local_origem: item.local_nome,
+        });
+        return json({ ok: true });
+      }
 
       if (pathname.match(/^\/api\/itens\/\d+\/baixa$/) && method === 'POST') {
         const id = pathname.split('/')[3];

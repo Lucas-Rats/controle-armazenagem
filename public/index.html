@@ -50,6 +50,19 @@
 
 <div class="so-impressao" id="cabecalho-impressao"></div>
 
+<dialog id="dialog-edicao" class="dialog">
+  <form class="dialog__corpo" id="form-edicao">
+    <h2 id="edicao-titulo">Corrigir</h2>
+    <p id="edicao-aviso" class="dialog__texto"></p>
+    <div id="edicao-campos"></div>
+    <p id="edicao-erro" class="erro hidden"></p>
+    <div class="dialog__acoes">
+      <button type="button" class="btn btn--ghost" id="btn-edicao-cancelar">Cancelar</button>
+      <button type="submit" class="btn btn--primario">Salvar</button>
+    </div>
+  </form>
+</dialog>
+
 <main class="conteudo">
 
   <!-- Totais -->
@@ -235,6 +248,10 @@
           <tr><td colspan="7" class="vazio">Carregando…</td></tr>
         </tbody>
       </table>
+    </div>
+    <div class="historico__rodape">
+      <span class="contagem" id="contagem-historico"></span>
+      <button id="btn-mais-historico" class="btn btn--ghost hidden">Carregar mais</button>
     </div>
   </section>
 

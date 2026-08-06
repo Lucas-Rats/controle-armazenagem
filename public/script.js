@@ -150,10 +150,12 @@ async function carregarItens() {
       ? `<div class="linha-acoes">
            <select class="select-transferir" data-id="${item.id}">
              <option value="">Mover para…</option>
-             ${locaisCache.map((l) =>
+             ${locaisCache.filter((l) => l.ativo !== 0).map((l) =>
                `<option value="${l.id}" ${l.id === item.local_id ? 'disabled' : ''}>${escapar(l.nome)}</option>`).join('')}
            </select>
+           <button class="btn btn--ghost btn-icone btn-corrigir" data-id="${item.id}" data-serial="${escapar(item.serial)}" title="Corrigir serial">Corrigir</button>
            <button class="btn btn--perigo btn-baixa" data-id="${item.id}">Baixar</button>
+           <button class="btn btn--ghost btn-icone btn-remover-peca" data-id="${item.id}" data-serial="${escapar(item.serial)}" title="Remover cadastro feito por engano">Remover</button>
          </div>` : '';
     return `<tr>
       <td class="col-serial">${escapar(item.serial)}</td>
@@ -168,17 +170,15 @@ async function carregarItens() {
 
 // ==================== Histórico ====================
 
-async function carregarHistorico() {
-  const historico = await api('/api/historico');
-  const corpo = $('#tabela-historico');
-  if (historico.length === 0) {
-    corpo.innerHTML = `<tr><td colspan="7" class="vazio">Sem movimentações ainda.</td></tr>`;
-    return;
-  }
-  const rotulos = { entrada: 'Recebimento', baixa: 'Expedição', transferencia: 'Transferência', import: 'Importação' };
-  corpo.innerHTML = historico.map((h) => `<tr>
+const ROTULOS_HISTORICO = {
+  entrada: 'Recebimento', baixa: 'Expedição', transferencia: 'Transferência',
+  import: 'Importação', correcao: 'Correção',
+};
+
+function linhasHistorico(registros) {
+  return registros.map((h) => `<tr>
     <td>${new Date(h.criado_em.replace(' ', 'T') + 'Z').toLocaleString('pt-BR')}</td>
-    <td>${rotulos[h.tipo] || h.tipo}</td>
+    <td>${ROTULOS_HISTORICO[h.tipo] || h.tipo}</td>
     <td class="col-qtd">${num(h.quantidade)}</td>
     <td>${escapar(h.produto_nome || '—')}${h.serial ? ` <span class="lista__meta">${escapar(h.serial)}</span>` : ''}</td>
     <td class="lista__meta">${escapar(h.referencia || '—')}</td>
@@ -186,6 +186,45 @@ async function carregarHistorico() {
     <td>${escapar(h.local_destino || '—')}</td>
   </tr>`).join('');
 }
+
+let ultimoIdHistorico = null;
+
+async function carregarHistorico() {
+  const { registros, tem_mais, total } = await api('/api/historico?limite=100');
+  const corpo = $('#tabela-historico');
+
+  if (registros.length === 0) {
+    corpo.innerHTML = `<tr><td colspan="7" class="vazio">Sem movimentações ainda.</td></tr>`;
+    $('#contagem-historico').textContent = '';
+    $('#btn-mais-historico').classList.add('hidden');
+    ultimoIdHistorico = null;
+    return;
+  }
+
+  corpo.innerHTML = linhasHistorico(registros);
+  ultimoIdHistorico = registros[registros.length - 1].id;
+  $('#contagem-historico').textContent = `${num(registros.length)} de ${num(total)} operações`;
+  $('#btn-mais-historico').classList.toggle('hidden', !tem_mais);
+}
+
+$('#btn-mais-historico').addEventListener('click', async () => {
+  const botao = $('#btn-mais-historico');
+  botao.disabled = true;
+  try {
+    const { registros, tem_mais, total } = await api(`/api/historico?limite=100&antes=${ultimoIdHistorico}`);
+    if (registros.length) {
+      $('#tabela-historico').insertAdjacentHTML('beforeend', linhasHistorico(registros));
+      ultimoIdHistorico = registros[registros.length - 1].id;
+    }
+    const mostrando = $('#tabela-historico').querySelectorAll('tr').length;
+    $('#contagem-historico').textContent = `${num(mostrando)} de ${num(total)} operações`;
+    botao.classList.toggle('hidden', !tem_mais);
+  } catch (e) {
+    mostrarToast(e.message, 'erro');
+  } finally {
+    botao.disabled = false;
+  }
+});
 
 // ==================== Cadastros ====================
 
@@ -208,7 +247,8 @@ async function carregarProdutos() {
 
   $('#lista-produtos').innerHTML = ativos.map((p) => linhaCadastro(
     `<strong class="col-codigo">${escapar(p.codigo)}</strong> ${escapar(p.nome)}`, '',
-    `<button class="btn btn--ghost btn-arquivar-produto" data-codigo="${escapar(p.codigo)}" data-ativo="0">Arquivar</button>
+    `<button class="btn btn--ghost btn-corrigir-produto" data-codigo="${escapar(p.codigo)}" data-nome="${escapar(p.nome)}">Corrigir</button>
+     <button class="btn btn--ghost btn-arquivar-produto" data-codigo="${escapar(p.codigo)}" data-ativo="0">Arquivar</button>
      <button class="btn btn--ghost btn-excluir-produto" data-codigo="${escapar(p.codigo)}">Excluir</button>`
   )).join('') || '<li class="lista__meta">Nenhum produto cadastrado.</li>';
 
@@ -235,7 +275,8 @@ async function carregarLocais() {
 
   $('#lista-locais').innerHTML = ativos.map((l) => linhaCadastro(
     escapar(l.nome), '',
-    `<button class="btn btn--ghost btn-arquivar-local" data-id="${l.id}" data-ativo="0">Arquivar</button>
+    `<button class="btn btn--ghost btn-corrigir-local" data-id="${l.id}" data-nome="${escapar(l.nome)}">Corrigir</button>
+     <button class="btn btn--ghost btn-arquivar-local" data-id="${l.id}" data-ativo="0">Arquivar</button>
      <button class="btn btn--ghost btn-excluir-local" data-id="${l.id}" data-nome="${escapar(l.nome)}">Excluir</button>`
   )).join('') || '<li class="lista__meta">Nenhum local cadastrado.</li>';
 
@@ -416,11 +457,36 @@ $('#form-transferencia').addEventListener('submit', async (ev) => {
 // ==================== Ações da tabela ====================
 
 $('#tabela-itens').addEventListener('click', async (ev) => {
-  if (!ev.target.classList.contains('btn-baixa')) return;
-  if (!confirm('Dar baixa nesta peça? Não pode ser desfeito.')) return;
+  const alvo = ev.target;
+  const id = alvo.dataset.id;
+  if (!id) return;
+
   try {
-    await api(`/api/itens/${ev.target.dataset.id}/baixa`, { method: 'POST' });
-    mostrarToast('Baixa registrada.');
+    if (alvo.classList.contains('btn-baixa')) {
+      if (!confirm('Dar baixa nesta peça? Não pode ser desfeito.')) return;
+      await api(`/api/itens/${id}/baixa`, { method: 'POST' });
+      mostrarToast('Baixa registrada.');
+
+    } else if (alvo.classList.contains('btn-corrigir')) {
+      const valores = await pedirCampos({
+        titulo: 'Corrigir número de série',
+        aviso: 'Use quando o serial foi digitado errado. A peça continua no estoque e a correção fica registrada no histórico.',
+        campos: [{ nome: 'serial', rotulo: 'Número de série', valor: alvo.dataset.serial }],
+      });
+      if (!valores) return;
+      await api(`/api/itens/${id}`, { method: 'PATCH', body: JSON.stringify({ serial: valores.serial }) });
+      mostrarToast('Serial corrigido.');
+
+    } else if (alvo.classList.contains('btn-remover-peca')) {
+      if (!confirm(
+        `Remover o cadastro da peça ${alvo.dataset.serial}?\n\n` +
+        'Use só se ela foi cadastrada por engano. Se a peça saiu de verdade, use Baixar.'
+      )) return;
+      await api(`/api/itens/${id}`, { method: 'DELETE' });
+      mostrarToast('Cadastro removido.');
+
+    } else return;
+
     await Promise.all([carregarEstoque(), carregarItens(), carregarHistorico()]);
   } catch (e) { mostrarToast(e.message, 'erro'); }
 });
@@ -439,6 +505,46 @@ $('#tabela-itens').addEventListener('change', async (ev) => {
 
 // ==================== Formulários de cadastro ====================
 
+
+
+// ==================== Diálogo de correção ====================
+// Devolve os valores preenchidos, ou null se o usuário cancelar.
+
+function pedirCampos({ titulo, aviso, campos }) {
+  const dialogo = $('#dialog-edicao');
+  $('#edicao-titulo').textContent = titulo;
+  $('#edicao-aviso').textContent = aviso || '';
+  $('#edicao-aviso').classList.toggle('hidden', !aviso);
+  $('#edicao-erro').classList.add('hidden');
+
+  $('#edicao-campos').innerHTML = campos.map((c) => `
+    <label class="dialog__campo">${escapar(c.rotulo)}
+      <input type="text" name="${c.nome}" value="${escapar(c.valor ?? '')}" ${c.obrigatorio === false ? '' : 'required'} />
+      ${c.dica ? `<span class="dica">${escapar(c.dica)}</span>` : ''}
+    </label>`).join('');
+
+  const form = $('#form-edicao');
+  return new Promise((resolve) => {
+    function aoEnviar(ev) {
+      ev.preventDefault();
+      const valores = {};
+      for (const c of campos) valores[c.nome] = form.querySelector(`[name="${c.nome}"]`).value.trim();
+      limpar(); dialogo.close(); resolve(valores);
+    }
+    function aoCancelar() { limpar(); dialogo.close(); resolve(null); }
+    function aoFechar() { limpar(); resolve(null); }
+    function limpar() {
+      form.removeEventListener('submit', aoEnviar);
+      $('#btn-edicao-cancelar').removeEventListener('click', aoCancelar);
+      dialogo.removeEventListener('close', aoFechar);
+    }
+    form.addEventListener('submit', aoEnviar);
+    $('#btn-edicao-cancelar').addEventListener('click', aoCancelar);
+    dialogo.addEventListener('close', aoFechar);
+    dialogo.showModal();
+    form.querySelector('input')?.focus();
+  });
+}
 
 // ==================== Diálogo de exclusão ====================
 // Devolve 'excluir', 'arquivar' ou 'voltar'. Só oferece as opções que
@@ -552,6 +658,20 @@ async function acaoProduto(ev) {
   try {
     if (alvo.classList.contains('btn-arquivar-produto')) {
       await arquivarProduto(codigo, alvo.dataset.ativo === '1');
+    } else if (alvo.classList.contains('btn-corrigir-produto')) {
+      const valores = await pedirCampos({
+        titulo: 'Corrigir produto',
+        aviso: 'Trocar o código também atualiza as peças e o histórico que apontam para ele.',
+        campos: [
+          { nome: 'codigo', rotulo: 'Código (part number)', valor: codigo },
+          { nome: 'nome', rotulo: 'Nome comercial', valor: alvo.dataset.nome },
+        ],
+      });
+      if (!valores) return;
+      await api(`/api/produtos/${encodeURIComponent(codigo)}`, {
+        method: 'PATCH', body: JSON.stringify({ codigo: valores.codigo, nome: valores.nome }),
+      });
+      mostrarToast('Produto corrigido.');
     } else if (alvo.classList.contains('btn-excluir-produto')) {
       const info = produtosCache.find((p) => p.codigo === codigo) || {};
       const escolha = await perguntarExclusao(montarPergunta(`o produto ${codigo}`, 'produto', info));
@@ -584,6 +704,15 @@ async function acaoLocal(ev) {
   try {
     if (alvo.classList.contains('btn-arquivar-local')) {
       await arquivarLocal(id, alvo.dataset.ativo === '1');
+    } else if (alvo.classList.contains('btn-corrigir-local')) {
+      const valores = await pedirCampos({
+        titulo: 'Corrigir local',
+        aviso: 'O histórico das movimentações antigas mantém o nome que o local tinha na época.',
+        campos: [{ nome: 'nome', rotulo: 'Nome do local', valor: nome }],
+      });
+      if (!valores) return;
+      await api(`/api/locais/${id}`, { method: 'PATCH', body: JSON.stringify({ nome: valores.nome }) });
+      mostrarToast('Local corrigido.');
     } else if (alvo.classList.contains('btn-excluir-local')) {
       const info = locaisCache.find((l) => String(l.id) === String(id)) || {};
       const escolha = await perguntarExclusao(montarPergunta(`o local "${nome}"`, 'local', info));

@@ -305,3 +305,23 @@ button, input, select, textarea { font-family: inherit; font-size: inherit; colo
   .chip { border: 1px solid #ccc; }
   .linha-seriais { display: none; }
 }
+
+/* ---------- Correção e paginação ---------- */
+
+.dialog__campo { display: flex; flex-direction: column; gap: 5px; margin-bottom: 12px; font-size: 12.5px; color: var(--ink-soft); }
+.dialog__campo input {
+  padding: 9px 11px; border: 1.5px solid var(--border-strong);
+  border-radius: var(--radius); font-size: 14px;
+}
+.dialog__campo .dica { font-size: 11.5px; color: var(--ink-faint); }
+
+.historico__rodape {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 12px; margin-top: 14px; flex-wrap: wrap;
+}
+.historico__rodape .contagem { margin: 0; }
+
+.carimbo--correcao { color: var(--accent); background: #F3E3CE; transform: rotate(-0.8deg); }
+.btn-icone { padding: 6px 9px !important; font-size: 12px !important; }
+
+@media print { .historico__rodape { display: none !important; } }

@@ -48,6 +48,28 @@ Todas as três aceitam desde 1 até 500 seriais por operação, e todas
 relatam exatamente o que entrou e o que foi recusado — nada falha em
 silêncio.
 
+## Corrigir erros
+
+Erro de digitação não deve virar movimentação falsa. Por isso existe uma
+via separada da baixa, e tudo que ela faz aparece no histórico como
+**Correção**, não como entrada ou saída.
+
+**Serial digitado errado** — botão Corrigir na linha da peça. Só funciona
+com peça disponível: peça já expedida é registro fechado.
+
+**Peça cadastrada por engano** — botão Remover na linha da peça. Existe
+para o operador não precisar dar uma baixa falsa, que apareceria como
+expedição no relatório do cliente.
+
+**Nome ou código do produto** — botão Corrigir na lista de produtos.
+Trocar o nome muda só o cadastro. Trocar o código arrasta junto as peças
+e o histórico, porque o código é o identificador que eles apontam, não um
+rótulo.
+
+**Nome do local** — botão Corrigir na lista de locais. O histórico das
+movimentações antigas mantém o nome que o local tinha na época, que é o
+que de fato estava escrito quando a peça se moveu.
+
 ## Excluir vs. arquivar
 
 Produto ou local **sem nenhuma peça associada** pode ser excluído de vez.
@@ -66,7 +88,7 @@ momento.
 - Local só pode ser excluído se não tiver peças disponíveis
 - Baixa é irreversível
 - Cliente (sem login) só vê peças disponíveis e só pode exportar
-- Histórico guarda as últimas 500 operações
+- Histórico guarda todas as operações, sem descartar nada
 
 Nada disso depende do navegador: mesmo alterando o JavaScript pelo
 DevTools, o servidor recusa a operação.
