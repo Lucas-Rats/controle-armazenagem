@@ -26,7 +26,12 @@ async function api(caminho, opcoes = {}) {
     headers: { 'content-type': 'application/json', ...(opcoes.headers || {}) },
   });
   const dados = await r.json().catch(() => ({}));
-  if (!r.ok) throw new Error(dados.erro || `erro ${r.status}`);
+  if (!r.ok) {
+    const e = new Error(dados.erro || `erro ${r.status}`);
+    e.dados = dados;
+    e.status = r.status;
+    throw e;
+  }
   return dados;
 }
 
@@ -434,6 +439,74 @@ $('#tabela-itens').addEventListener('change', async (ev) => {
 
 // ==================== Formulários de cadastro ====================
 
+
+// ==================== Diálogo de exclusão ====================
+// Devolve 'excluir', 'arquivar' ou 'voltar'. Só oferece as opções que
+// fazem sentido para o caso, em vez de mostrar um botão que vai falhar.
+
+function perguntarExclusao({ titulo, mensagem, aviso, permiteExcluir, permiteArquivar }) {
+  const dialogo = $('#dialog-exclusao');
+  $('#exclusao-titulo').textContent = titulo;
+  $('#exclusao-msg').textContent = mensagem;
+
+  const campoAviso = $('#exclusao-aviso');
+  campoAviso.textContent = aviso || '';
+  campoAviso.classList.toggle('hidden', !aviso);
+
+  $('#btn-escolha-excluir').classList.toggle('hidden', !permiteExcluir);
+  $('#btn-escolha-arquivar').classList.toggle('hidden', !permiteArquivar);
+
+  return new Promise((resolve) => {
+    function aoClicar(ev) {
+      const escolha = ev.target.dataset.escolha;
+      if (!escolha) return;
+      limpar();
+      dialogo.close();
+      resolve(escolha);
+    }
+    function aoFechar() { limpar(); resolve('voltar'); }
+    function limpar() {
+      dialogo.removeEventListener('click', aoClicar);
+      dialogo.removeEventListener('close', aoFechar);
+    }
+    dialogo.addEventListener('click', aoClicar);
+    dialogo.addEventListener('close', aoFechar);
+    dialogo.showModal();
+  });
+}
+
+// Monta a pergunta certa a partir do que o registro tem associado.
+function montarPergunta(rotulo, tipo, info) {
+  const disponiveis = info.itens_disponiveis || 0;
+  const total = info.itens_total || 0;
+  const historico = total - disponiveis;
+
+  if (disponiveis > 0) {
+    return {
+      titulo: `Não dá para excluir ${rotulo}`,
+      mensagem: `Ainda tem ${num(disponiveis)} peça(s) em estoque ${tipo === 'produto' ? 'desse produto' : 'nesse local'}. ` +
+        (tipo === 'produto' ? 'Dê baixa nelas primeiro.' : 'Transfira-as para outro local primeiro.'),
+      aviso: 'Você pode arquivar agora e excluir depois, quando o estoque zerar.',
+      permiteExcluir: false, permiteArquivar: true,
+    };
+  }
+  if (historico > 0) {
+    return {
+      titulo: `Excluir ou arquivar ${rotulo}?`,
+      mensagem: `Tem ${num(historico)} peça(s) já expedida(s) associada(s). Arquivar tira das listas e mantém tudo registrado — dá para reativar depois.`,
+      aviso: tipo === 'produto'
+        ? `Excluir apaga permanentemente o registro dessas ${num(historico)} peças. O histórico de movimentações continua.`
+        : `Excluir desvincula essas ${num(historico)} peças do local. Elas continuam registradas, e o histórico de movimentações também.`,
+      permiteExcluir: true, permiteArquivar: true,
+    };
+  }
+  return {
+    titulo: `Excluir ${rotulo}?`,
+    mensagem: 'Não tem nenhuma peça associada, então nada de histórico se perde.',
+    permiteExcluir: true, permiteArquivar: true,
+  };
+}
+
 function mensagemCartao(form, texto, tipo) {
   const msg = form.querySelector('.cartao__msg');
   msg.textContent = texto;
@@ -465,41 +538,65 @@ $('#form-local').addEventListener('submit', async (ev) => {
   } catch (e) { mensagemCartao(form, e.message, 'erro'); }
 });
 
+async function arquivarProduto(codigo, ativo) {
+  await api(`/api/produtos/${encodeURIComponent(codigo)}`, {
+    method: 'PATCH', body: JSON.stringify({ ativo }),
+  });
+  mostrarToast(ativo ? 'Produto reativado.' : 'Produto arquivado.');
+}
+
 async function acaoProduto(ev) {
   const alvo = ev.target;
   const codigo = alvo.dataset.codigo;
   if (!codigo) return;
   try {
-    if (alvo.classList.contains('btn-excluir-produto')) {
-      if (!confirm(`Excluir o produto ${codigo} de vez?`)) return;
-      await api(`/api/produtos/${encodeURIComponent(codigo)}`, { method: 'DELETE' });
-      mostrarToast('Produto excluído.');
-    } else if (alvo.classList.contains('btn-arquivar-produto')) {
-      const ativo = alvo.dataset.ativo === '1';
-      await api(`/api/produtos/${encodeURIComponent(codigo)}`, {
-        method: 'PATCH', body: JSON.stringify({ ativo }),
-      });
-      mostrarToast(ativo ? 'Produto reativado.' : 'Produto arquivado.');
+    if (alvo.classList.contains('btn-arquivar-produto')) {
+      await arquivarProduto(codigo, alvo.dataset.ativo === '1');
+    } else if (alvo.classList.contains('btn-excluir-produto')) {
+      const info = produtosCache.find((p) => p.codigo === codigo) || {};
+      const escolha = await perguntarExclusao(montarPergunta(`o produto ${codigo}`, 'produto', info));
+
+      if (escolha === 'voltar') return;
+      if (escolha === 'arquivar') {
+        await arquivarProduto(codigo, false);
+      } else {
+        const r = await api(`/api/produtos/${encodeURIComponent(codigo)}?cascata=1`, { method: 'DELETE' });
+        mostrarToast(r.pecas_removidas
+          ? `Produto excluído junto com ${num(r.pecas_removidas)} peça(s) do histórico.`
+          : 'Produto excluído.');
+      }
     } else return;
-    await Promise.all([carregarProdutos(), carregarEstoque()]);
+    await Promise.all([carregarProdutos(), carregarEstoque(), carregarItens()]);
   } catch (e) { mostrarToast(e.message, 'erro'); }
 }
 $('#lista-produtos').addEventListener('click', acaoProduto);
 $('#arquivados-produtos').addEventListener('click', acaoProduto);
+
+async function arquivarLocal(id, ativo) {
+  await api(`/api/locais/${id}`, { method: 'PATCH', body: JSON.stringify({ ativo }) });
+  mostrarToast(ativo ? 'Local reativado.' : 'Local arquivado.');
+}
 
 async function acaoLocal(ev) {
   const alvo = ev.target;
   const { id, nome } = alvo.dataset;
   if (!id) return;
   try {
-    if (alvo.classList.contains('btn-excluir-local')) {
-      if (!confirm(`Excluir o local "${nome}" de vez?`)) return;
-      await api(`/api/locais/${id}`, { method: 'DELETE' });
-      mostrarToast('Local excluído.');
-    } else if (alvo.classList.contains('btn-arquivar-local')) {
-      const ativo = alvo.dataset.ativo === '1';
-      await api(`/api/locais/${id}`, { method: 'PATCH', body: JSON.stringify({ ativo }) });
-      mostrarToast(ativo ? 'Local reativado.' : 'Local arquivado.');
+    if (alvo.classList.contains('btn-arquivar-local')) {
+      await arquivarLocal(id, alvo.dataset.ativo === '1');
+    } else if (alvo.classList.contains('btn-excluir-local')) {
+      const info = locaisCache.find((l) => String(l.id) === String(id)) || {};
+      const escolha = await perguntarExclusao(montarPergunta(`o local "${nome}"`, 'local', info));
+
+      if (escolha === 'voltar') return;
+      if (escolha === 'arquivar') {
+        await arquivarLocal(id, false);
+      } else {
+        const r = await api(`/api/locais/${id}?cascata=1`, { method: 'DELETE' });
+        mostrarToast(r.pecas_desvinculadas
+          ? `Local excluído. ${num(r.pecas_desvinculadas)} peça(s) ficaram sem local.`
+          : 'Local excluído.');
+      }
     } else return;
     await Promise.all([carregarLocais(), carregarEstoque(), carregarItens()]);
   } catch (e) { mostrarToast(e.message, 'erro'); }

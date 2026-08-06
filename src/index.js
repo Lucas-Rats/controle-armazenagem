@@ -190,13 +190,25 @@ export default {
 
       // ==================== Leitura (admin e cliente) ====================
 
+      // As contagens vêm junto para a interface saber, antes de perguntar
+      // qualquer coisa ao usuário, se dá para excluir ou só arquivar.
       if (pathname === '/api/produtos' && method === 'GET') {
-        const { results } = await env.DB.prepare(`SELECT * FROM produtos ORDER BY nome`).all();
+        const { results } = await env.DB.prepare(
+          `SELECT p.*,
+             (SELECT COUNT(*) FROM itens WHERE produto_codigo = p.codigo) as itens_total,
+             (SELECT COUNT(*) FROM itens WHERE produto_codigo = p.codigo AND status = 'disponivel') as itens_disponiveis
+           FROM produtos p ORDER BY p.nome`
+        ).all();
         return json(results);
       }
 
       if (pathname === '/api/locais' && method === 'GET') {
-        const { results } = await env.DB.prepare(`SELECT * FROM locais ORDER BY nome`).all();
+        const { results } = await env.DB.prepare(
+          `SELECT l.*,
+             (SELECT COUNT(*) FROM itens WHERE local_id = l.id) as itens_total,
+             (SELECT COUNT(*) FROM itens WHERE local_id = l.id AND status = 'disponivel') as itens_disponiveis
+           FROM locais l ORDER BY l.nome`
+        ).all();
         return json(results);
       }
 
@@ -320,23 +332,35 @@ export default {
 
       if (pathname.match(/^\/api\/produtos\/[^/]+$/) && method === 'DELETE') {
         const codigo = decodeURIComponent(pathname.split('/').pop());
+        const cascata = url.searchParams.get('cascata') === '1';
         const c = await env.DB.prepare(
           `SELECT COUNT(*) as total,
                   SUM(CASE WHEN status = 'disponivel' THEN 1 ELSE 0 END) as disponiveis
            FROM itens WHERE produto_codigo = ?`
         ).bind(codigo).first();
 
+        // Peça em estoque nunca é apagada em cascata: ela existe de verdade
+        // no armazém, e sumir com o registro dela é diferente de descartar
+        // histórico de algo que já saiu.
         if (c.disponiveis > 0) {
-          return erro(`produto tem ${c.disponiveis} peça(s) em estoque — dê baixa nelas primeiro`, 409);
+          return json({
+            erro: `produto tem ${c.disponiveis} peça(s) em estoque — dê baixa nelas primeiro`,
+            em_estoque: c.disponiveis,
+          }, 409);
+        }
+        if (c.total > 0 && !cascata) {
+          return json({
+            erro: `produto tem ${c.total} peça(s) já expedida(s) no histórico`,
+            historico: c.total,
+            arquivavel: true,
+          }, 409);
         }
         if (c.total > 0) {
-          return erro(
-            `produto tem histórico de ${c.total} peça(s) já movimentada(s). Excluir apagaria esse registro — use Arquivar para tirá-lo das listas mantendo o histórico.`,
-            409
-          );
+          await env.DB.prepare(`DELETE FROM itens WHERE produto_codigo = ? AND status = 'baixado'`)
+            .bind(codigo).run();
         }
         await env.DB.prepare(`DELETE FROM produtos WHERE codigo = ?`).bind(codigo).run();
-        return json({ ok: true });
+        return json({ ok: true, pecas_removidas: c.total });
       }
 
       if (pathname.match(/^\/api\/produtos\/[^/]+$/) && method === 'PATCH') {
@@ -360,6 +384,7 @@ export default {
 
       if (pathname.match(/^\/api\/locais\/\d+$/) && method === 'DELETE') {
         const id = pathname.split('/').pop();
+        const cascata = url.searchParams.get('cascata') === '1';
         const c = await env.DB.prepare(
           `SELECT COUNT(*) as total,
                   SUM(CASE WHEN status = 'disponivel' THEN 1 ELSE 0 END) as disponiveis
@@ -367,16 +392,26 @@ export default {
         ).bind(id).first();
 
         if (c.disponiveis > 0) {
-          return erro(`local tem ${c.disponiveis} peça(s) em estoque — transfira-as primeiro`, 409);
+          return json({
+            erro: `local tem ${c.disponiveis} peça(s) em estoque — transfira-as primeiro`,
+            em_estoque: c.disponiveis,
+          }, 409);
         }
+        if (c.total > 0 && !cascata) {
+          return json({
+            erro: `local tem ${c.total} peça(s) expedida(s) que passaram por ele`,
+            historico: c.total,
+            arquivavel: true,
+          }, 409);
+        }
+        // Aqui as peças não são apagadas: só perdem o vínculo com o local.
+        // O registro da peça continua valendo, e por onde ela passou segue
+        // no histórico de movimentações, que guarda o nome como texto.
         if (c.total > 0) {
-          return erro(
-            `local tem histórico de ${c.total} peça(s) que passaram por ele. Excluir apagaria esse registro — use Arquivar para tirá-lo das listas mantendo o histórico.`,
-            409
-          );
+          await env.DB.prepare(`UPDATE itens SET local_id = NULL WHERE local_id = ?`).bind(id).run();
         }
         await env.DB.prepare(`DELETE FROM locais WHERE id = ?`).bind(id).run();
-        return json({ ok: true });
+        return json({ ok: true, pecas_desvinculadas: c.total });
       }
 
       if (pathname.match(/^\/api\/locais\/\d+$/) && method === 'PATCH') {

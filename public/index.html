@@ -35,6 +35,19 @@
   </form>
 </dialog>
 
+<dialog id="dialog-exclusao" class="dialog">
+  <div class="dialog__corpo">
+    <h2 id="exclusao-titulo">Excluir</h2>
+    <p id="exclusao-msg" class="dialog__texto"></p>
+    <p id="exclusao-aviso" class="dialog__aviso hidden"></p>
+    <div class="dialog__acoes">
+      <button type="button" class="btn btn--ghost" data-escolha="voltar">Voltar</button>
+      <button type="button" class="btn btn--primario" data-escolha="arquivar" id="btn-escolha-arquivar">Arquivar</button>
+      <button type="button" class="btn btn--perigo-solido" data-escolha="excluir" id="btn-escolha-excluir">Excluir</button>
+    </div>
+  </div>
+</dialog>
+
 <main class="conteudo">
 
   <!-- Totais -->
