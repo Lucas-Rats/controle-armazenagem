@@ -1,0 +1,365 @@
+:root {
+  --bg: #ECEEE9;
+  --surface: #FFFFFF;
+  --surface-2: #F4F5F0;
+  --ink: #1D2320;
+  --ink-soft: #59635D;
+  --ink-faint: #8A928C;
+  --border: #D7D9D0;
+  --border-strong: #B9BDB2;
+
+  --accent: #C97A2E;
+  --accent-ink: #7A4718;
+  --accent-bg: #F3E3CE;
+
+  --ok: #3F7A5E;
+  --ok-bg: #E3EFE8;
+  --baixo: #8B4A42;
+  --baixo-bg: #F3E5E2;
+  --danger: #B3261E;
+  --danger-bg: #FBE7E5;
+
+  --mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+  --sans: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+
+  --radius: 6px;
+  color-scheme: light;
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  padding: 0;
+  background: var(--bg);
+  color: var(--ink);
+  font-family: var(--sans);
+  font-size: 15px;
+  line-height: 1.5;
+}
+
+h1, h2, h3 { margin: 0; font-family: var(--mono); }
+
+button, input, select {
+  font-family: inherit;
+  font-size: inherit;
+  color: inherit;
+}
+
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.hidden { display: none !important; }
+
+/* ---------- Topbar ---------- */
+
+.topbar {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+  padding: 28px clamp(16px, 4vw, 48px) 20px;
+  border-bottom: 2px solid var(--ink);
+  background: var(--surface);
+}
+
+.topbar__eyebrow {
+  display: block;
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+  margin-bottom: 6px;
+}
+
+.topbar__title {
+  font-size: clamp(20px, 3vw, 28px);
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+
+.topbar__auth {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.auth-status {
+  font-family: var(--mono);
+  font-size: 12px;
+  color: var(--ink-soft);
+}
+
+/* ---------- Botões ---------- */
+
+.btn {
+  font-family: var(--sans);
+  font-weight: 600;
+  font-size: 13px;
+  letter-spacing: 0.01em;
+  padding: 9px 16px;
+  border-radius: var(--radius);
+  border: 1.5px solid transparent;
+  cursor: pointer;
+  transition: transform 0.08s ease, background 0.15s ease;
+}
+.btn:active { transform: translateY(1px); }
+
+.btn--primario {
+  background: var(--ink);
+  color: var(--surface);
+}
+.btn--primario:hover { background: #333d37; }
+
+.btn--ghost {
+  background: transparent;
+  border-color: var(--border-strong);
+  color: var(--ink);
+}
+.btn--ghost:hover { background: var(--surface-2); }
+
+.btn--perigo {
+  background: transparent;
+  border-color: var(--danger);
+  color: var(--danger);
+}
+.btn--perigo:hover { background: var(--danger-bg); }
+
+@media (prefers-reduced-motion: reduce) {
+  .btn { transition: none; }
+}
+
+/* ---------- Diálogo de login ---------- */
+
+.dialog {
+  border: none;
+  border-radius: 10px;
+  padding: 0;
+  box-shadow: 0 20px 60px rgba(29, 35, 32, 0.25);
+}
+.dialog::backdrop { background: rgba(29, 35, 32, 0.45); }
+
+.form-login {
+  padding: 28px;
+  width: min(340px, 84vw);
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.form-login h2 { font-size: 16px; }
+.form-login label {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 13px;
+  color: var(--ink-soft);
+}
+.form-login input {
+  padding: 10px 12px;
+  border: 1.5px solid var(--border-strong);
+  border-radius: var(--radius);
+  font-size: 14px;
+}
+.form-login__acoes {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 4px;
+}
+.erro {
+  color: var(--danger);
+  background: var(--danger-bg);
+  padding: 8px 10px;
+  border-radius: var(--radius);
+  font-size: 13px;
+  margin: 0;
+}
+
+/* ---------- Conteúdo ---------- */
+
+.conteudo {
+  max-width: 1080px;
+  margin: 0 auto;
+  padding: 28px clamp(16px, 4vw, 48px) 64px;
+  display: flex;
+  flex-direction: column;
+  gap: 28px;
+}
+
+.painel {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 22px clamp(16px, 3vw, 28px);
+}
+
+.painel__cabecalho {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: 16px;
+}
+
+.painel h2 {
+  font-size: 14px;
+  text-transform: uppercase;
+  letter-spacing: 0.09em;
+  color: var(--ink-soft);
+}
+
+.acoes-exportacao { display: flex; gap: 10px; }
+
+/* ---------- Filtros ---------- */
+
+.filtros {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-bottom: 16px;
+}
+.filtros input, .filtros select {
+  padding: 9px 12px;
+  border: 1.5px solid var(--border-strong);
+  border-radius: var(--radius);
+  background: var(--surface);
+}
+#filtro-busca { flex: 1; min-width: 200px; }
+
+/* ---------- Tabela (estilo livro-razão) ---------- */
+
+.tabela-wrap { overflow-x: auto; }
+
+.tabela {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13.5px;
+}
+.tabela th {
+  text-align: left;
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+  padding: 8px 10px;
+  border-bottom: 2px solid var(--ink);
+  white-space: nowrap;
+}
+.tabela td {
+  padding: 10px;
+  border-bottom: 1px solid var(--border);
+  vertical-align: middle;
+}
+.tabela tbody tr:hover { background: var(--surface-2); }
+.tabela .vazio {
+  text-align: center;
+  color: var(--ink-faint);
+  padding: 24px 10px;
+}
+.col-serial { font-family: var(--mono); font-weight: 500; }
+
+.linha-acoes { display: flex; gap: 8px; flex-wrap: wrap; }
+.linha-acoes select {
+  padding: 6px 8px;
+  border: 1.5px solid var(--border-strong);
+  border-radius: var(--radius);
+  font-size: 12px;
+}
+.linha-acoes .btn { padding: 6px 10px; font-size: 12px; }
+
+/* ---------- Badge de status (carimbo) ---------- */
+
+.carimbo {
+  display: inline-block;
+  font-family: var(--mono);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  padding: 3px 9px;
+  border-radius: 3px;
+  border: 1.5px solid currentColor;
+  transform: rotate(-1.5deg);
+}
+.carimbo--disponivel { color: var(--ok); background: var(--ok-bg); }
+.carimbo--baixado { color: var(--baixo); background: var(--baixo-bg); transform: rotate(1.2deg); }
+
+/* ---------- Painel admin ---------- */
+
+.grid-admin {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 16px;
+  margin-bottom: 20px;
+}
+
+.cartao {
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.cartao--larga { grid-column: 1 / -1; }
+.cartao h3 { font-size: 13px; font-family: var(--sans); font-weight: 600; }
+.cartao label {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  font-size: 12.5px;
+  color: var(--ink-soft);
+}
+.cartao input, .cartao select {
+  padding: 8px 10px;
+  border: 1.5px solid var(--border-strong);
+  border-radius: var(--radius);
+  background: var(--surface);
+}
+.cartao__msg { font-size: 12.5px; margin: 0; min-height: 16px; }
+.cartao__msg.ok { color: var(--ok); }
+.cartao__msg.erro { color: var(--danger); }
+
+.lista-locais h3 { font-size: 13px; font-family: var(--sans); font-weight: 600; margin-bottom: 8px; }
+.lista-locais ul { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.lista-locais li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 12px;
+  background: var(--surface-2);
+  border-radius: var(--radius);
+  font-size: 13px;
+}
+
+/* ---------- Toast ---------- */
+
+.toast {
+  position: fixed;
+  bottom: 24px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: var(--ink);
+  color: var(--surface);
+  padding: 12px 20px;
+  border-radius: var(--radius);
+  font-size: 13.5px;
+  box-shadow: 0 12px 30px rgba(29, 35, 32, 0.3);
+  z-index: 50;
+}
+.toast.erro { background: var(--danger); }
+
+/* ---------- Responsivo ---------- */
+
+@media (max-width: 640px) {
+  .topbar { flex-direction: column; align-items: flex-start; }
+  .painel__cabecalho { flex-direction: column; align-items: flex-start; }
+  .tabela { font-size: 12.5px; }
+}

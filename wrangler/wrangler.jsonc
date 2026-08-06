@@ -1,0 +1,25 @@
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "controle-armazenagem",
+  "main": "./src/index.js",
+  // Pode deixar essa data como está — só precisa ser uma data válida
+  "compatibility_date": "2026-08-05",
+
+  // HTML, CSS e JS são servidos automaticamente a partir daqui.
+  // O Worker (src/index.js) só é chamado para rotas que não batem com
+  // nenhum arquivo estático — ou seja, só para /api/*.
+  "assets": {
+    "directory": "./public/",
+    "binding": "ASSETS"
+  },
+
+  // Depois de rodar "wrangler d1 create armazenagem-db", troque o
+  // database_id abaixo pelo ID que o comando devolver.
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "armazenagem-db",
+      "database_id": "COLOQUE_AQUI_O_ID_DO_BANCO"
+    }
+  ]
+}

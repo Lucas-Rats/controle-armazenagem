@@ -1,0 +1,97 @@
+# Controle de Armazenagem — v2 (Workers + D1)
+
+Reescrita do zero. As diferenças em relação à versão anterior:
+
+- **Sem mais senha no navegador.** A senha do administrador fica só no
+  servidor, como *secret* do Cloudflare. O que roda no `script.js` do
+  visitante não tem mais nenhum segredo dentro.
+- **Sessão real.** Login gera um cookie assinado (HttpOnly + Secure), não
+  uma variável dentro do próprio JS.
+- **Banco de verdade (D1).** Os dados deixam de morar no `localStorage` de
+  cada navegador e passam a ficar num banco compartilhado — todo mundo que
+  acessa vê o mesmo estoque, de qualquer computador.
+- **Regras aplicadas no servidor.** Serial duplicado, exclusão de local com
+  item disponível, etc. — tudo é checado pelo Worker antes de gravar, então
+  não dá mais para contornar pelo DevTools.
+- **Limite de tentativas de login.** 5 tentativas erradas do mesmo IP e a
+  próxima tentativa é bloqueada por 15 minutos.
+- Mesmas regras de negócio da documentação original (perfis admin/cliente,
+  baixa irreversível, histórico limitado a 500 registros, exportar/importar
+  JSON).
+
+Continua 100% no plano gratuito do Cloudflare.
+
+## Pré-requisitos
+
+- Node.js instalado
+- Uma conta Cloudflare (grátis)
+
+## 1. Instalar dependências
+
+```bash
+cd controle-armazenagem
+npm install
+npx wrangler login
+```
+
+## 2. Criar o banco D1
+
+```bash
+npx wrangler d1 create armazenagem-db
+```
+
+O comando devolve um `database_id`. Copie esse valor e cole em
+`wrangler.jsonc`, no lugar de `COLOQUE_AQUI_O_ID_DO_BANCO`.
+
+## 3. Criar as tabelas
+
+```bash
+npm run db:schema
+```
+
+## 4. Configurar os secrets
+
+Dois segredos, nunca ficam no código nem no navegador:
+
+```bash
+npx wrangler secret put ADMIN_PASSWORD
+# digite a senha do administrador quando pedir — use algo bem maior que 4 dígitos
+
+npx wrangler secret put SESSION_SECRET
+# gere um valor aleatório e cole, por exemplo com:
+# openssl rand -base64 32
+```
+
+## 5. Deploy
+
+```bash
+npm run deploy
+```
+
+O terminal mostra a URL final (algo como
+`controle-armazenagem.<seu-usuário>.workers.dev`). Dá para apontar um
+domínio próprio depois, direto no painel da Cloudflare.
+
+## Migrando os dados da versão antiga
+
+A versão antiga (localStorage) tem um botão **Exportar Dados** — use-o para
+baixar o JSON de cada computador que tenha dados relevantes. Depois, na
+versão nova, faça login como administrador e use **Importar JSON** com cada
+um desses arquivos. A importação ignora duplicados (mesmo produto ou mesmo
+serial disponível não é criado de novo), então é seguro importar mais de um
+arquivo em sequência.
+
+## Rotina de backup
+
+O botão **Exportar JSON** continua existindo e funciona para admin e
+cliente, exatamente como antes — só que agora ele exporta o banco de
+verdade, não o localStorage local.
+
+## Se precisar trocar a senha do administrador
+
+```bash
+npx wrangler secret put ADMIN_PASSWORD
+```
+
+Isso substitui o valor anterior. Não precisa mexer em nenhum arquivo nem
+fazer novo deploy.

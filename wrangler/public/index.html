@@ -1,0 +1,153 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Controle de Armazenagem</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600;700&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet" />
+<link rel="stylesheet" href="style.css" />
+</head>
+<body>
+
+<header class="topbar">
+  <div class="topbar__doc">
+    <span class="topbar__eyebrow">Manifesto Nº <span id="manifesto-num">000000</span></span>
+    <h1 class="topbar__title">Controle de Armazenagem</h1>
+  </div>
+  <div class="topbar__auth">
+    <span id="auth-status" class="auth-status">visitante — só consulta</span>
+    <button id="btn-abrir-login" class="btn btn--ghost">Entrar como administrador</button>
+    <button id="btn-logout" class="btn btn--ghost hidden">Sair</button>
+  </div>
+</header>
+
+<dialog id="dialog-login" class="dialog">
+  <form id="form-login" class="form-login">
+    <h2>Acesso do administrador</h2>
+    <label>
+      Senha
+      <input type="password" id="input-senha" autocomplete="current-password" required />
+    </label>
+    <p id="login-erro" class="erro hidden"></p>
+    <div class="form-login__acoes">
+      <button type="button" id="btn-cancelar-login" class="btn btn--ghost">Cancelar</button>
+      <button type="submit" class="btn btn--primario">Entrar</button>
+    </div>
+  </form>
+</dialog>
+
+<main class="conteudo">
+
+  <section class="painel">
+    <div class="painel__cabecalho">
+      <h2>Estoque disponível</h2>
+      <div class="acoes-exportacao">
+        <button id="btn-exportar" class="btn btn--ghost">Exportar JSON</button>
+        <label class="btn btn--ghost admin-only hidden">
+          Importar JSON
+          <input type="file" id="input-importar" accept="application/json" hidden />
+        </label>
+      </div>
+    </div>
+
+    <div class="filtros">
+      <input type="search" id="filtro-busca" placeholder="Buscar por serial, código ou nome…" />
+      <select id="filtro-local">
+        <option value="">Todos os locais</option>
+      </select>
+      <select id="filtro-status" class="admin-only hidden">
+        <option value="disponivel">Disponíveis</option>
+        <option value="baixado">Baixados</option>
+      </select>
+    </div>
+
+    <div class="tabela-wrap">
+      <table class="tabela">
+        <thead>
+          <tr>
+            <th>Serial</th>
+            <th>Produto</th>
+            <th>Local</th>
+            <th>Status</th>
+            <th class="admin-only hidden">Ações</th>
+          </tr>
+        </thead>
+        <tbody id="tabela-itens">
+          <tr><td colspan="5" class="vazio">Carregando…</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section class="painel admin-only hidden" id="painel-admin">
+    <h2>Administração</h2>
+
+    <div class="grid-admin">
+      <form id="form-produto" class="cartao">
+        <h3>Cadastrar produto</h3>
+        <label>Código<input type="text" id="produto-codigo" required /></label>
+        <label>Nome<input type="text" id="produto-nome" required /></label>
+        <button type="submit" class="btn btn--primario">Cadastrar produto</button>
+        <p class="cartao__msg"></p>
+      </form>
+
+      <form id="form-local" class="cartao">
+        <h3>Cadastrar local</h3>
+        <label>Nome do local<input type="text" id="local-nome" required /></label>
+        <button type="submit" class="btn btn--primario">Cadastrar local</button>
+        <p class="cartao__msg"></p>
+      </form>
+
+      <form id="form-entrada" class="cartao cartao--larga">
+        <h3>Registrar entrada</h3>
+        <label>Produto
+          <select id="entrada-produto" required></select>
+        </label>
+        <label>Número de série<input type="text" id="entrada-serial" required /></label>
+        <label>Local
+          <select id="entrada-local"></select>
+        </label>
+        <button type="submit" class="btn btn--primario">Registrar entrada</button>
+        <p class="cartao__msg"></p>
+      </form>
+    </div>
+
+    <div class="lista-locais">
+      <h3>Locais cadastrados</h3>
+      <ul id="lista-locais"></ul>
+    </div>
+  </section>
+
+  <section class="painel">
+    <div class="painel__cabecalho">
+      <h2>Histórico</h2>
+      <button id="btn-limpar-historico" class="btn btn--ghost admin-only hidden">Limpar histórico</button>
+    </div>
+    <div class="tabela-wrap">
+      <table class="tabela tabela--historico">
+        <thead>
+          <tr>
+            <th>Quando</th>
+            <th>Tipo</th>
+            <th>Produto</th>
+            <th>Serial</th>
+            <th>De</th>
+            <th>Para</th>
+          </tr>
+        </thead>
+        <tbody id="tabela-historico">
+          <tr><td colspan="6" class="vazio">Carregando…</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+</main>
+
+<div id="toast" class="toast hidden"></div>
+
+<script src="script.js"></script>
+</body>
+</html>
