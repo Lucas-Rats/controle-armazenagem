@@ -1,30 +1,32 @@
 // Sistema de Controle de Armazenagem — lógica do cliente
-// Tudo aqui fala com a API em /api/*. Nenhuma regra de negócio "de verdade"
-// é decidida no navegador — o servidor sempre confere de novo, então nada
-// aqui precisa (nem deve) ser tratado como fonte de verdade.
+// Tudo fala com a API em /api/*. Nenhuma regra de negócio é decidida aqui:
+// o servidor sempre confere de novo antes de gravar.
 
 let admin = false;
 let locaisCache = [];
+let produtosCache = [];
 
-const $ = (sel) => document.querySelector(sel);
-const $$ = (sel) => document.querySelectorAll(sel);
+const $ = (s) => document.querySelector(s);
+const $$ = (s) => document.querySelectorAll(s);
+const num = (n) => Number(n || 0).toLocaleString('pt-BR');
+const escapar = (t) => String(t ?? '').replace(/[&<>"]/g, (c) =>
+  ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 
 function mostrarToast(mensagem, tipo = 'ok') {
   const toast = $('#toast');
   toast.textContent = mensagem;
   toast.className = `toast ${tipo === 'erro' ? 'erro' : ''}`;
-  toast.classList.remove('hidden');
   clearTimeout(mostrarToast._t);
-  mostrarToast._t = setTimeout(() => toast.classList.add('hidden'), 3500);
+  mostrarToast._t = setTimeout(() => toast.classList.add('hidden'), 4000);
 }
 
 async function api(caminho, opcoes = {}) {
-  const resposta = await fetch(caminho, {
+  const r = await fetch(caminho, {
     ...opcoes,
     headers: { 'content-type': 'application/json', ...(opcoes.headers || {}) },
   });
-  const dados = await resposta.json().catch(() => ({}));
-  if (!resposta.ok) throw new Error(dados.erro || `erro ${resposta.status}`);
+  const dados = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(dados.erro || `erro ${r.status}`);
   return dados;
 }
 
@@ -36,109 +38,180 @@ function aplicarModoAdmin() {
   if (!admin) $('#filtro-status').value = 'disponivel';
 }
 
-// ---------- Carregamento ----------
+// ==================== Estoque agregado ====================
 
-async function carregarProdutos() {
-  const produtos = await api('/api/produtos');
-  $('#entrada-produto').innerHTML = produtos.map((p) => `<option value="${p.codigo}">${p.codigo} — ${p.nome}</option>`).join('');
+let estoqueCache = [];
+
+async function carregarEstoque() {
+  const { totais, produtos } = await api('/api/estoque');
+
+  $('#total-itens').textContent = num(totais.itens);
+  $('#total-produtos').textContent = num(totais.produtos);
+  $('#total-locais').textContent = num(totais.locais);
+  $('#total-baixados').textContent = num(totais.baixados);
+
+  estoqueCache = produtos;
+  renderEstoque();
 }
 
-async function carregarLocais() {
-  locaisCache = await api('/api/locais');
+// Filtra em memória: a lista de produtos é pequena, então a busca é
+// instantânea e não gasta uma consulta ao banco a cada tecla.
+function renderEstoque() {
+  const busca = $('#busca-produto').value.trim().toLowerCase();
+  const produtos = busca
+    ? estoqueCache.filter((p) =>
+        p.codigo.toLowerCase().includes(busca) || p.nome.toLowerCase().includes(busca))
+    : estoqueCache;
 
-  $('#entrada-local').innerHTML =
-    '<option value="">— nenhum —</option>' + locaisCache.map((l) => `<option value="${l.id}">${l.nome}</option>`).join('');
+  const somaFiltrada = produtos.reduce((s, p) => s + p.quantidade, 0);
+  $('#contagem-produtos').textContent = busca
+    ? `${num(produtos.length)} produto(s) · ${num(somaFiltrada)} peça(s)`
+    : '';
 
-  $('#filtro-local').innerHTML =
-    '<option value="">Todos os locais</option>' + locaisCache.map((l) => `<option value="${l.id}">${l.nome}</option>`).join('');
+  const corpo = $('#tabela-estoque');
+  if (estoqueCache.length === 0) {
+    corpo.innerHTML = `<tr><td colspan="4" class="vazio">Nenhum produto cadastrado ainda.</td></tr>`;
+    return;
+  }
+  if (produtos.length === 0) {
+    corpo.innerHTML = `<tr><td colspan="4" class="vazio">Nenhum produto corresponde a "${escapar(busca)}".</td></tr>`;
+    return;
+  }
 
-  $('#lista-locais').innerHTML = locaisCache
-    .map((l) => `<li>${l.nome} <button class="btn btn--ghost btn-excluir-local" data-id="${l.id}" data-nome="${l.nome}">Excluir</button></li>`)
-    .join('');
+  corpo.innerHTML = produtos.map((p) => {
+    const chips = p.locais.length
+      ? `<div class="chips">${p.locais.map((l) =>
+          `<span class="chip">${escapar(l.local)} <strong>${num(l.quantidade)}</strong></span>`).join('')}</div>`
+      : '<span class="lista__meta">sem peças em estoque</span>';
+    return `<tr class="linha-produto" data-codigo="${escapar(p.codigo)}">
+      <td class="col-codigo">${escapar(p.codigo)}</td>
+      <td>${escapar(p.nome)}</td>
+      <td class="col-qtd ${p.quantidade === 0 ? 'col-qtd--zero' : ''}">${num(p.quantidade)}</td>
+      <td>${chips}</td>
+    </tr>`;
+  }).join('');
 }
+
+$('#tabela-estoque').addEventListener('click', async (ev) => {
+  const linha = ev.target.closest('.linha-produto');
+  if (!linha) return;
+  const codigo = linha.dataset.codigo;
+  const proxima = linha.nextElementSibling;
+
+  if (proxima?.classList.contains('linha-seriais')) {
+    proxima.remove();
+    linha.classList.remove('aberta');
+    return;
+  }
+  $$('.linha-seriais').forEach((el) => el.remove());
+  $$('.linha-produto.aberta').forEach((el) => el.classList.remove('aberta'));
+  linha.classList.add('aberta');
+
+  const itens = await api(`/api/itens?produto_codigo=${encodeURIComponent(codigo)}&status=disponivel`);
+  const conteudo = itens.length
+    ? `<div class="seriais-lista">${itens.map((i) => `<code>${escapar(i.serial)}</code>`).join('')}</div>`
+    : '<span class="lista__meta">nenhuma peça disponível</span>';
+  linha.insertAdjacentHTML('afterend',
+    `<tr class="linha-seriais"><td colspan="4">${conteudo}</td></tr>`);
+});
+
+// ==================== Estoque peça a peça ====================
 
 async function carregarItens() {
   const params = new URLSearchParams();
   const busca = $('#filtro-busca').value.trim();
-  const local = $('#filtro-local').value;
-  const status = admin ? $('#filtro-status').value : 'disponivel';
   if (busca) params.set('q', busca);
-  if (local) params.set('local_id', local);
-  params.set('status', status);
+  if ($('#filtro-local').value) params.set('local_id', $('#filtro-local').value);
+  if ($('#filtro-produto').value) params.set('produto_codigo', $('#filtro-produto').value);
+  params.set('status', admin ? $('#filtro-status').value : 'disponivel');
 
-  const itens = await api(`/api/itens?${params.toString()}`);
+  const itens = await api(`/api/itens?${params}`);
+  $('#contagem-itens').textContent = `${num(itens.length)} peça(s)`;
+
   const corpo = $('#tabela-itens');
-
   if (itens.length === 0) {
-    corpo.innerHTML = `<tr><td colspan="5" class="vazio">Nenhum item encontrado.</td></tr>`;
+    corpo.innerHTML = `<tr><td colspan="6" class="vazio">Nenhuma peça encontrada.</td></tr>`;
     return;
   }
 
-  corpo.innerHTML = itens
-    .map((item) => {
-      const carimbo =
-        item.status === 'disponivel'
-          ? '<span class="carimbo carimbo--disponivel">Disponível</span>'
-          : '<span class="carimbo carimbo--baixado">Baixado</span>';
-
-      const acoes =
-        admin && item.status === 'disponivel'
-          ? `<div class="linha-acoes">
-               <select class="select-transferir" data-id="${item.id}">
-                 <option value="">Transferir para…</option>
-                 ${locaisCache
-                   .map((l) => `<option value="${l.id}" ${l.id === item.local_id ? 'disabled' : ''}>${l.nome}</option>`)
-                   .join('')}
-               </select>
-               <button class="btn btn--perigo btn-baixa" data-id="${item.id}">Dar baixa</button>
-             </div>`
-          : '';
-
-      return `<tr>
-        <td class="col-serial">${item.serial}</td>
-        <td>${item.produto_nome || item.produto_codigo}</td>
-        <td>${item.local_nome || '—'}</td>
-        <td>${carimbo}</td>
-        <td class="admin-only ${admin ? '' : 'hidden'}">${acoes}</td>
-      </tr>`;
-    })
-    .join('');
+  corpo.innerHTML = itens.map((item) => {
+    const carimbo = item.status === 'disponivel'
+      ? '<span class="carimbo carimbo--disponivel">Disponível</span>'
+      : '<span class="carimbo carimbo--baixado">Expedido</span>';
+    const doc = item.status === 'disponivel'
+      ? (item.entrada_ref || '—')
+      : (item.saida_ref || '—');
+    const acoes = admin && item.status === 'disponivel'
+      ? `<div class="linha-acoes">
+           <select class="select-transferir" data-id="${item.id}">
+             <option value="">Mover para…</option>
+             ${locaisCache.map((l) =>
+               `<option value="${l.id}" ${l.id === item.local_id ? 'disabled' : ''}>${escapar(l.nome)}</option>`).join('')}
+           </select>
+           <button class="btn btn--perigo btn-baixa" data-id="${item.id}">Baixar</button>
+         </div>` : '';
+    return `<tr>
+      <td class="col-serial">${escapar(item.serial)}</td>
+      <td>${escapar(item.produto_nome)} <span class="lista__meta">${escapar(item.produto_codigo)}</span></td>
+      <td>${escapar(item.local_nome || '—')}</td>
+      <td class="lista__meta">${escapar(doc)}</td>
+      <td>${carimbo}</td>
+      <td class="admin-only ${admin ? '' : 'hidden'}">${acoes}</td>
+    </tr>`;
+  }).join('');
 }
+
+// ==================== Histórico ====================
 
 async function carregarHistorico() {
   const historico = await api('/api/historico');
   const corpo = $('#tabela-historico');
   if (historico.length === 0) {
-    corpo.innerHTML = `<tr><td colspan="6" class="vazio">Sem movimentações ainda.</td></tr>`;
+    corpo.innerHTML = `<tr><td colspan="7" class="vazio">Sem movimentações ainda.</td></tr>`;
     return;
   }
-  const rotulos = { entrada: 'Entrada', baixa: 'Baixa', transferencia: 'Transferência', import: 'Importação' };
-  corpo.innerHTML = historico
-    .map(
-      (h) => `<tr>
-        <td>${new Date(h.criado_em.replace(' ', 'T') + 'Z').toLocaleString('pt-BR')}</td>
-        <td>${rotulos[h.tipo] || h.tipo}</td>
-        <td>${h.produto_nome || '—'}</td>
-        <td class="col-serial">${h.serial || '—'}</td>
-        <td>${h.local_origem || '—'}</td>
-        <td>${h.local_destino || '—'}</td>
-      </tr>`
-    )
-    .join('');
+  const rotulos = { entrada: 'Recebimento', baixa: 'Expedição', transferencia: 'Transferência', import: 'Importação' };
+  corpo.innerHTML = historico.map((h) => `<tr>
+    <td>${new Date(h.criado_em.replace(' ', 'T') + 'Z').toLocaleString('pt-BR')}</td>
+    <td>${rotulos[h.tipo] || h.tipo}</td>
+    <td class="col-qtd">${num(h.quantidade)}</td>
+    <td>${escapar(h.produto_nome || '—')}${h.serial ? ` <span class="lista__meta">${escapar(h.serial)}</span>` : ''}</td>
+    <td class="lista__meta">${escapar(h.referencia || '—')}</td>
+    <td>${escapar(h.local_origem || '—')}</td>
+    <td>${escapar(h.local_destino || '—')}</td>
+  </tr>`).join('');
+}
+
+// ==================== Cadastros ====================
+
+async function carregarProdutos() {
+  produtosCache = await api('/api/produtos');
+  const opcoes = produtosCache.map((p) =>
+    `<option value="${escapar(p.codigo)}">${escapar(p.codigo)} — ${escapar(p.nome)}</option>`).join('');
+  $('#entrada-produto').innerHTML = opcoes;
+  $('#filtro-produto').innerHTML = '<option value="">Todos os produtos</option>' + opcoes;
+  $('#lista-produtos').innerHTML = produtosCache.map((p) =>
+    `<li><span><strong class="col-codigo">${escapar(p.codigo)}</strong> ${escapar(p.nome)}</span>
+      <button class="btn btn--ghost btn-excluir-produto" data-codigo="${escapar(p.codigo)}">Excluir</button></li>`).join('');
+}
+
+async function carregarLocais() {
+  locaisCache = await api('/api/locais');
+  const opcoes = locaisCache.map((l) => `<option value="${l.id}">${escapar(l.nome)}</option>`).join('');
+  $('#entrada-local').innerHTML = '<option value="">— sem local —</option>' + opcoes;
+  $('#transferencia-local').innerHTML = '<option value="">Selecione…</option>' + opcoes;
+  $('#filtro-local').innerHTML = '<option value="">Todos os locais</option>' + opcoes;
+  $('#lista-locais').innerHTML = locaisCache.map((l) =>
+    `<li><span>${escapar(l.nome)}</span>
+      <button class="btn btn--ghost btn-excluir-local" data-id="${l.id}" data-nome="${escapar(l.nome)}">Excluir</button></li>`).join('');
 }
 
 async function recarregarTudo() {
   await Promise.all([carregarProdutos(), carregarLocais()]);
-  await Promise.all([carregarItens(), carregarHistorico()]);
+  await Promise.all([carregarEstoque(), carregarItens(), carregarHistorico()]);
 }
 
-// ---------- Autenticação ----------
-
-async function verificarSessao() {
-  const { admin: souAdmin } = await api('/api/me');
-  admin = souAdmin;
-  aplicarModoAdmin();
-}
+// ==================== Autenticação ====================
 
 $('#btn-abrir-login').addEventListener('click', () => {
   $('#login-erro').classList.add('hidden');
@@ -146,11 +219,10 @@ $('#btn-abrir-login').addEventListener('click', () => {
   $('#dialog-login').showModal();
   $('#input-senha').focus();
 });
-
 $('#btn-cancelar-login').addEventListener('click', () => $('#dialog-login').close());
 
-$('#form-login').addEventListener('submit', async (evento) => {
-  evento.preventDefault();
+$('#form-login').addEventListener('submit', async (ev) => {
+  ev.preventDefault();
   try {
     await api('/api/login', { method: 'POST', body: JSON.stringify({ senha: $('#input-senha').value }) });
     $('#dialog-login').close();
@@ -172,49 +244,158 @@ $('#btn-logout').addEventListener('click', async () => {
   mostrarToast('Você saiu do modo administrador.');
 });
 
-// ---------- Filtros ----------
+// ==================== Abas e filtros ====================
+
+$$('.aba').forEach((aba) => aba.addEventListener('click', () => {
+  $$('.aba').forEach((a) => a.classList.toggle('aba--ativa', a === aba));
+  const vista = aba.dataset.vista;
+  $('#vista-produto').classList.toggle('hidden', vista !== 'produto');
+  $('#vista-serial').classList.toggle('hidden', vista !== 'serial');
+}));
+
+$('#busca-produto').addEventListener('input', renderEstoque);
 
 let filtroTimeout;
 $('#filtro-busca').addEventListener('input', () => {
   clearTimeout(filtroTimeout);
   filtroTimeout = setTimeout(carregarItens, 250);
 });
-$('#filtro-local').addEventListener('change', carregarItens);
-$('#filtro-status').addEventListener('change', carregarItens);
+['#filtro-local', '#filtro-produto', '#filtro-status'].forEach((sel) =>
+  $(sel).addEventListener('change', carregarItens));
 
-// ---------- Ações da tabela (delegadas, porque as linhas são recriadas) ----------
+// ==================== Contadores de serial ====================
 
-$('#tabela-itens').addEventListener('click', async (evento) => {
-  if (!evento.target.classList.contains('btn-baixa')) return;
-  if (!confirm('Dar baixa neste item? Essa ação não pode ser desfeita.')) return;
+function contarSeriais(texto) {
+  return texto.split(/[\n\r,;\t]+/).map((s) => s.trim()).filter(Boolean).length;
+}
+
+[['#entrada-seriais', '#contador-entrada'],
+ ['#expedicao-seriais', '#contador-expedicao'],
+ ['#transferencia-seriais', '#contador-transferencia']].forEach(([campo, contador]) => {
+  $(campo).addEventListener('input', () => {
+    $(contador).textContent = `${contarSeriais($(campo).value)} seriais`;
+  });
+});
+
+// ==================== Resultado das operações em lote ====================
+
+function mostrarResultado(form, resultado, rotuloOk) {
+  const caixa = form.querySelector('.resultado');
+  const feitos = resultado.registrados ?? resultado.baixados ?? resultado.transferidos ?? 0;
+  const d = resultado.detalhe || {};
+
+  let html = `<div class="resultado__linha"><span class="resultado__ok">${num(feitos)}</span> ${rotuloOk}</div>`;
+  if (resultado.recusados > 0) {
+    html += `<div class="resultado__linha"><span class="resultado__aviso">${num(resultado.recusados)}</span> não processados</div>`;
+  }
+  if (d.ja_no_destino > 0) {
+    html += `<div class="resultado__linha"><span>${num(d.ja_no_destino)}</span> já estavam no destino</div>`;
+  }
+  const listas = [
+    ['Já existiam no estoque', d.ja_disponiveis],
+    ['Não encontrados ou já expedidos', d.nao_encontrados],
+    ['Repetidos dentro do lote', d.repetidos_no_lote],
+  ].filter(([, lista]) => lista?.length);
+
+  for (const [titulo, lista] of listas) {
+    html += `<details><summary>${titulo} (${lista.length})</summary>
+      <div class="seriais-lista">${lista.map((s) => `<code>${escapar(s)}</code>`).join('')}</div></details>`;
+  }
+  caixa.innerHTML = html;
+  caixa.classList.remove('hidden');
+}
+
+// ==================== Operações ====================
+
+$('#form-entrada').addEventListener('submit', async (ev) => {
+  ev.preventDefault();
+  const form = ev.target;
   try {
-    await api(`/api/itens/${evento.target.dataset.id}/baixa`, { method: 'POST' });
-    mostrarToast('Baixa registrada.');
-    await carregarItens();
-    await carregarHistorico();
+    const resultado = await api('/api/entrada', {
+      method: 'POST',
+      body: JSON.stringify({
+        produto_codigo: $('#entrada-produto').value,
+        local_id: $('#entrada-local').value ? Number($('#entrada-local').value) : null,
+        referencia: $('#entrada-ref').value,
+        seriais: $('#entrada-seriais').value,
+      }),
+    });
+    mostrarResultado(form, resultado, 'peças recebidas');
+    $('#entrada-seriais').value = '';
+    $('#contador-entrada').textContent = '0 seriais';
+    await Promise.all([carregarEstoque(), carregarItens(), carregarHistorico()]);
   } catch (e) {
     mostrarToast(e.message, 'erro');
   }
 });
 
-$('#tabela-itens').addEventListener('change', async (evento) => {
-  const alvo = evento.target;
+$('#form-expedicao').addEventListener('submit', async (ev) => {
+  ev.preventDefault();
+  const form = ev.target;
+  const qtd = contarSeriais($('#expedicao-seriais').value);
+  if (!confirm(`Dar baixa em ${qtd} serial(is)? Essa ação não pode ser desfeita.`)) return;
+  try {
+    const resultado = await api('/api/expedicao', {
+      method: 'POST',
+      body: JSON.stringify({
+        referencia: $('#expedicao-ref').value,
+        seriais: $('#expedicao-seriais').value,
+      }),
+    });
+    mostrarResultado(form, resultado, 'peças expedidas');
+    $('#expedicao-seriais').value = '';
+    $('#contador-expedicao').textContent = '0 seriais';
+    await Promise.all([carregarEstoque(), carregarItens(), carregarHistorico()]);
+  } catch (e) {
+    mostrarToast(e.message, 'erro');
+  }
+});
+
+$('#form-transferencia').addEventListener('submit', async (ev) => {
+  ev.preventDefault();
+  const form = ev.target;
+  try {
+    const resultado = await api('/api/transferencia', {
+      method: 'POST',
+      body: JSON.stringify({
+        local_id: Number($('#transferencia-local').value),
+        seriais: $('#transferencia-seriais').value,
+      }),
+    });
+    mostrarResultado(form, resultado, 'peças transferidas');
+    $('#transferencia-seriais').value = '';
+    $('#contador-transferencia').textContent = '0 seriais';
+    await Promise.all([carregarEstoque(), carregarItens(), carregarHistorico()]);
+  } catch (e) {
+    mostrarToast(e.message, 'erro');
+  }
+});
+
+// ==================== Ações da tabela ====================
+
+$('#tabela-itens').addEventListener('click', async (ev) => {
+  if (!ev.target.classList.contains('btn-baixa')) return;
+  if (!confirm('Dar baixa nesta peça? Não pode ser desfeito.')) return;
+  try {
+    await api(`/api/itens/${ev.target.dataset.id}/baixa`, { method: 'POST' });
+    mostrarToast('Baixa registrada.');
+    await Promise.all([carregarEstoque(), carregarItens(), carregarHistorico()]);
+  } catch (e) { mostrarToast(e.message, 'erro'); }
+});
+
+$('#tabela-itens').addEventListener('change', async (ev) => {
+  const alvo = ev.target;
   if (!alvo.classList.contains('select-transferir') || !alvo.value) return;
   try {
     await api(`/api/itens/${alvo.dataset.id}/transferir`, {
-      method: 'POST',
-      body: JSON.stringify({ local_id: Number(alvo.value) }),
+      method: 'POST', body: JSON.stringify({ local_id: Number(alvo.value) }),
     });
-    mostrarToast('Item transferido.');
-    await carregarItens();
-    await carregarHistorico();
-  } catch (e) {
-    mostrarToast(e.message, 'erro');
-    alvo.value = '';
-  }
+    mostrarToast('Peça transferida.');
+    await Promise.all([carregarEstoque(), carregarItens(), carregarHistorico()]);
+  } catch (e) { mostrarToast(e.message, 'erro'); alvo.value = ''; }
 });
 
-// ---------- Formulários admin ----------
+// ==================== Formulários de cadastro ====================
 
 function mensagemCartao(form, texto, tipo) {
   const msg = form.querySelector('.cartao__msg');
@@ -222,9 +403,9 @@ function mensagemCartao(form, texto, tipo) {
   msg.className = `cartao__msg ${tipo}`;
 }
 
-$('#form-produto').addEventListener('submit', async (evento) => {
-  evento.preventDefault();
-  const form = evento.target;
+$('#form-produto').addEventListener('submit', async (ev) => {
+  ev.preventDefault();
+  const form = ev.target;
   try {
     await api('/api/produtos', {
       method: 'POST',
@@ -232,68 +413,51 @@ $('#form-produto').addEventListener('submit', async (evento) => {
     });
     form.reset();
     mensagemCartao(form, 'Produto cadastrado.', 'ok');
-    await carregarProdutos();
-  } catch (e) {
-    mensagemCartao(form, e.message, 'erro');
-  }
+    await Promise.all([carregarProdutos(), carregarEstoque()]);
+  } catch (e) { mensagemCartao(form, e.message, 'erro'); }
 });
 
-$('#form-local').addEventListener('submit', async (evento) => {
-  evento.preventDefault();
-  const form = evento.target;
+$('#form-local').addEventListener('submit', async (ev) => {
+  ev.preventDefault();
+  const form = ev.target;
   try {
     await api('/api/locais', { method: 'POST', body: JSON.stringify({ nome: $('#local-nome').value }) });
     form.reset();
     mensagemCartao(form, 'Local cadastrado.', 'ok');
-    await carregarLocais();
-  } catch (e) {
-    mensagemCartao(form, e.message, 'erro');
-  }
+    await Promise.all([carregarLocais(), carregarEstoque()]);
+  } catch (e) { mensagemCartao(form, e.message, 'erro'); }
 });
 
-$('#form-entrada').addEventListener('submit', async (evento) => {
-  evento.preventDefault();
-  const form = evento.target;
+$('#lista-produtos').addEventListener('click', async (ev) => {
+  if (!ev.target.classList.contains('btn-excluir-produto')) return;
+  const codigo = ev.target.dataset.codigo;
+  if (!confirm(`Excluir o produto ${codigo}?`)) return;
   try {
-    await api('/api/itens', {
-      method: 'POST',
-      body: JSON.stringify({
-        produto_codigo: $('#entrada-produto').value,
-        serial: $('#entrada-serial').value,
-        local_id: $('#entrada-local').value ? Number($('#entrada-local').value) : null,
-      }),
-    });
-    form.reset();
-    mensagemCartao(form, 'Entrada registrada.', 'ok');
-    await carregarItens();
-    await carregarHistorico();
-  } catch (e) {
-    mensagemCartao(form, e.message, 'erro');
-  }
+    await api(`/api/produtos/${encodeURIComponent(codigo)}`, { method: 'DELETE' });
+    mostrarToast('Produto excluído.');
+    await Promise.all([carregarProdutos(), carregarEstoque()]);
+  } catch (e) { mostrarToast(e.message, 'erro'); }
 });
 
-$('#lista-locais').addEventListener('click', async (evento) => {
-  if (!evento.target.classList.contains('btn-excluir-local')) return;
-  const { id, nome } = evento.target.dataset;
+$('#lista-locais').addEventListener('click', async (ev) => {
+  if (!ev.target.classList.contains('btn-excluir-local')) return;
+  const { id, nome } = ev.target.dataset;
   if (!confirm(`Excluir o local "${nome}"?`)) return;
   try {
     await api(`/api/locais/${id}`, { method: 'DELETE' });
     mostrarToast('Local excluído.');
-    await carregarLocais();
-    await carregarItens();
-  } catch (e) {
-    mostrarToast(e.message, 'erro');
-  }
+    await Promise.all([carregarLocais(), carregarEstoque(), carregarItens()]);
+  } catch (e) { mostrarToast(e.message, 'erro'); }
 });
 
 $('#btn-limpar-historico').addEventListener('click', async () => {
-  if (!confirm('Limpar todo o histórico? Essa ação não pode ser desfeita.')) return;
+  if (!confirm('Limpar todo o histórico? Não pode ser desfeito.')) return;
   await api('/api/historico', { method: 'DELETE' });
   await carregarHistorico();
   mostrarToast('Histórico limpo.');
 });
 
-// ---------- Exportar / importar ----------
+// ==================== Exportar / importar ====================
 
 $('#btn-exportar').addEventListener('click', async () => {
   const dados = await api('/api/export');
@@ -306,33 +470,31 @@ $('#btn-exportar').addEventListener('click', async () => {
   URL.revokeObjectURL(url);
 });
 
-$('#input-importar').addEventListener('change', async (evento) => {
-  const arquivo = evento.target.files[0];
+$('#input-importar').addEventListener('change', async (ev) => {
+  const arquivo = ev.target.files[0];
   if (!arquivo) return;
   try {
-    const texto = await arquivo.text();
-    const dados = JSON.parse(texto);
-    const resultado = await api('/api/import', { method: 'POST', body: JSON.stringify(dados) });
-    mostrarToast(`${resultado.importados} itens importados.`);
+    const resultado = await api('/api/import', { method: 'POST', body: await arquivo.text() });
+    mostrarToast(`${resultado.importados} peças importadas.`);
     await recarregarTudo();
   } catch (e) {
     mostrarToast('Falha ao importar: ' + e.message, 'erro');
-  } finally {
-    evento.target.value = '';
-  }
+  } finally { ev.target.value = ''; }
 });
 
-// ---------- Início ----------
+// ==================== Início ====================
 
 (function preencherManifesto() {
-  const hoje = new Date();
-  const numero = `${hoje.getFullYear()}${String(hoje.getMonth() + 1).padStart(2, '0')}${String(hoje.getDate()).padStart(2, '0')}`;
-  $('#manifesto-num').textContent = numero;
+  const h = new Date();
+  $('#manifesto-num').textContent =
+    `${h.getFullYear()}${String(h.getMonth() + 1).padStart(2, '0')}${String(h.getDate()).padStart(2, '0')}`;
 })();
 
 (async function iniciar() {
   try {
-    await verificarSessao();
+    const { admin: souAdmin } = await api('/api/me');
+    admin = souAdmin;
+    aplicarModoAdmin();
     await recarregarTudo();
   } catch (e) {
     mostrarToast('Erro ao carregar dados: ' + e.message, 'erro');

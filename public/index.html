@@ -12,7 +12,7 @@
 <body>
 
 <header class="topbar">
-  <div class="topbar__doc">
+  <div>
     <span class="topbar__eyebrow">Manifesto Nº <span id="manifesto-num">000000</span></span>
     <h1 class="topbar__title">Controle de Armazenagem</h1>
   </div>
@@ -26,10 +26,7 @@
 <dialog id="dialog-login" class="dialog">
   <form id="form-login" class="form-login">
     <h2>Acesso do administrador</h2>
-    <label>
-      Senha
-      <input type="password" id="input-senha" autocomplete="current-password" required />
-    </label>
+    <label>Senha<input type="password" id="input-senha" autocomplete="current-password" required /></label>
     <p id="login-erro" class="erro hidden"></p>
     <div class="form-login__acoes">
       <button type="button" id="btn-cancelar-login" class="btn btn--ghost">Cancelar</button>
@@ -40,105 +37,176 @@
 
 <main class="conteudo">
 
+  <!-- Totais -->
+  <section class="totais" id="totais">
+    <div class="total"><span class="total__num" id="total-itens">—</span><span class="total__rot">peças em estoque</span></div>
+    <div class="total"><span class="total__num" id="total-produtos">—</span><span class="total__rot">produtos cadastrados</span></div>
+    <div class="total"><span class="total__num" id="total-locais">—</span><span class="total__rot">locais</span></div>
+    <div class="total"><span class="total__num" id="total-baixados">—</span><span class="total__rot">peças já expedidas</span></div>
+  </section>
+
+  <!-- Estoque -->
   <section class="painel">
     <div class="painel__cabecalho">
-      <h2>Estoque disponível</h2>
+      <h2>Estoque</h2>
       <div class="acoes-exportacao">
         <button id="btn-exportar" class="btn btn--ghost">Exportar JSON</button>
         <label class="btn btn--ghost admin-only hidden">
-          Importar JSON
-          <input type="file" id="input-importar" accept="application/json" hidden />
+          Importar JSON<input type="file" id="input-importar" accept="application/json" hidden />
         </label>
       </div>
     </div>
 
-    <div class="filtros">
-      <input type="search" id="filtro-busca" placeholder="Buscar por serial, código ou nome…" />
-      <select id="filtro-local">
-        <option value="">Todos os locais</option>
-      </select>
-      <select id="filtro-status" class="admin-only hidden">
-        <option value="disponivel">Disponíveis</option>
-        <option value="baixado">Baixados</option>
-      </select>
+    <div class="abas" role="tablist">
+      <button class="aba aba--ativa" data-vista="produto" role="tab">Por produto</button>
+      <button class="aba" data-vista="serial" role="tab">Peça a peça</button>
     </div>
 
+    <!-- Vista agregada -->
+    <div id="vista-produto">
+      <div class="filtros">
+        <input type="search" id="busca-produto" placeholder="Buscar produto por código ou nome…" />
+      </div>
+      <p class="contagem" id="contagem-produtos"></p>
+      <div class="tabela-wrap">
+        <table class="tabela">
+          <thead>
+            <tr>
+              <th>Código</th><th>Produto</th><th class="num">Quantidade</th><th>Distribuição</th>
+            </tr>
+          </thead>
+          <tbody id="tabela-estoque">
+            <tr><td colspan="4" class="vazio">Carregando…</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="nota">A quantidade é sempre a contagem das peças com serial registrado — não existe um número digitado à mão em lugar nenhum. Clique numa linha para ver os seriais.</p>
+    </div>
+
+    <!-- Vista peça a peça -->
+    <div id="vista-serial" class="hidden">
+      <div class="filtros">
+        <input type="search" id="filtro-busca" placeholder="Buscar por serial, código, nome ou nota…" />
+        <select id="filtro-local"><option value="">Todos os locais</option></select>
+        <select id="filtro-produto"><option value="">Todos os produtos</option></select>
+        <select id="filtro-status" class="admin-only hidden">
+          <option value="disponivel">Disponíveis</option>
+          <option value="baixado">Já expedidos</option>
+        </select>
+      </div>
+      <p class="contagem" id="contagem-itens"></p>
+      <div class="tabela-wrap">
+        <table class="tabela">
+          <thead>
+            <tr>
+              <th>Serial</th><th>Produto</th><th>Local</th><th>Documento</th><th>Status</th>
+              <th class="admin-only hidden">Ações</th>
+            </tr>
+          </thead>
+          <tbody id="tabela-itens">
+            <tr><td colspan="6" class="vazio">Carregando…</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
+  <!-- Operações -->
+  <section class="painel admin-only hidden">
+    <h2>Operações</h2>
+    <div class="grid-ops">
+
+      <form id="form-entrada" class="cartao cartao--entrada">
+        <h3>Recebimento</h3>
+        <p class="cartao__desc">Um produto, um local, quantos seriais forem necessários.</p>
+        <label>Produto<select id="entrada-produto" required></select></label>
+        <label>Local de armazenagem<select id="entrada-local"></select></label>
+        <label>Nota fiscal / romaneio <span class="opcional">(opcional)</span>
+          <input type="text" id="entrada-ref" placeholder="NF 12345" /></label>
+        <label>Números de série
+          <textarea id="entrada-seriais" rows="6" placeholder="Um por linha, ou colados do Excel / leitor de código de barras" required></textarea>
+        </label>
+        <div class="cartao__rodape">
+          <span class="contador" id="contador-entrada">0 seriais</span>
+          <button type="submit" class="btn btn--primario">Registrar recebimento</button>
+        </div>
+        <div class="resultado hidden"></div>
+      </form>
+
+      <form id="form-expedicao" class="cartao cartao--saida">
+        <h3>Expedição</h3>
+        <p class="cartao__desc">Dá baixa em todos os seriais informados. Não pode ser desfeito.</p>
+        <label>Pedido / romaneio <span class="opcional">(opcional)</span>
+          <input type="text" id="expedicao-ref" placeholder="Pedido 8890" /></label>
+        <label>Números de série
+          <textarea id="expedicao-seriais" rows="6" placeholder="Um por linha" required></textarea>
+        </label>
+        <div class="cartao__rodape">
+          <span class="contador" id="contador-expedicao">0 seriais</span>
+          <button type="submit" class="btn btn--perigo-solido">Dar baixa</button>
+        </div>
+        <div class="resultado hidden"></div>
+      </form>
+
+      <form id="form-transferencia" class="cartao">
+        <h3>Transferência</h3>
+        <p class="cartao__desc">Move peças entre locais. Serial e produto não mudam.</p>
+        <label>Local de destino<select id="transferencia-local" required></select></label>
+        <label>Números de série
+          <textarea id="transferencia-seriais" rows="6" placeholder="Um por linha" required></textarea>
+        </label>
+        <div class="cartao__rodape">
+          <span class="contador" id="contador-transferencia">0 seriais</span>
+          <button type="submit" class="btn btn--primario">Transferir</button>
+        </div>
+        <div class="resultado hidden"></div>
+      </form>
+
+    </div>
+  </section>
+
+  <!-- Cadastros -->
+  <section class="painel admin-only hidden">
+    <h2>Cadastros</h2>
+    <div class="grid-cadastros">
+      <div>
+        <form id="form-produto" class="cartao">
+          <h3>Novo produto</h3>
+          <label>Código (part number)<input type="text" id="produto-codigo" placeholder="602000" required /></label>
+          <label>Nome comercial<input type="text" id="produto-nome" placeholder="Versace" required /></label>
+          <button type="submit" class="btn btn--primario">Cadastrar produto</button>
+          <p class="cartao__msg"></p>
+        </form>
+        <ul class="lista" id="lista-produtos"></ul>
+      </div>
+      <div>
+        <form id="form-local" class="cartao">
+          <h3>Novo local</h3>
+          <label>Nome<input type="text" id="local-nome" placeholder="Prédio 1" required /></label>
+          <button type="submit" class="btn btn--primario">Cadastrar local</button>
+          <p class="cartao__msg"></p>
+        </form>
+        <ul class="lista" id="lista-locais"></ul>
+      </div>
+    </div>
+  </section>
+
+  <!-- Histórico -->
+  <section class="painel">
+    <div class="painel__cabecalho">
+      <h2>Histórico de movimentações</h2>
+      <button id="btn-limpar-historico" class="btn btn--ghost admin-only hidden">Limpar histórico</button>
+    </div>
     <div class="tabela-wrap">
       <table class="tabela">
         <thead>
           <tr>
-            <th>Serial</th>
-            <th>Produto</th>
-            <th>Local</th>
-            <th>Status</th>
-            <th class="admin-only hidden">Ações</th>
-          </tr>
-        </thead>
-        <tbody id="tabela-itens">
-          <tr><td colspan="5" class="vazio">Carregando…</td></tr>
-        </tbody>
-      </table>
-    </div>
-  </section>
-
-  <section class="painel admin-only hidden" id="painel-admin">
-    <h2>Administração</h2>
-
-    <div class="grid-admin">
-      <form id="form-produto" class="cartao">
-        <h3>Cadastrar produto</h3>
-        <label>Código<input type="text" id="produto-codigo" required /></label>
-        <label>Nome<input type="text" id="produto-nome" required /></label>
-        <button type="submit" class="btn btn--primario">Cadastrar produto</button>
-        <p class="cartao__msg"></p>
-      </form>
-
-      <form id="form-local" class="cartao">
-        <h3>Cadastrar local</h3>
-        <label>Nome do local<input type="text" id="local-nome" required /></label>
-        <button type="submit" class="btn btn--primario">Cadastrar local</button>
-        <p class="cartao__msg"></p>
-      </form>
-
-      <form id="form-entrada" class="cartao cartao--larga">
-        <h3>Registrar entrada</h3>
-        <label>Produto
-          <select id="entrada-produto" required></select>
-        </label>
-        <label>Número de série<input type="text" id="entrada-serial" required /></label>
-        <label>Local
-          <select id="entrada-local"></select>
-        </label>
-        <button type="submit" class="btn btn--primario">Registrar entrada</button>
-        <p class="cartao__msg"></p>
-      </form>
-    </div>
-
-    <div class="lista-locais">
-      <h3>Locais cadastrados</h3>
-      <ul id="lista-locais"></ul>
-    </div>
-  </section>
-
-  <section class="painel">
-    <div class="painel__cabecalho">
-      <h2>Histórico</h2>
-      <button id="btn-limpar-historico" class="btn btn--ghost admin-only hidden">Limpar histórico</button>
-    </div>
-    <div class="tabela-wrap">
-      <table class="tabela tabela--historico">
-        <thead>
-          <tr>
-            <th>Quando</th>
-            <th>Tipo</th>
-            <th>Produto</th>
-            <th>Serial</th>
-            <th>De</th>
-            <th>Para</th>
+            <th>Quando</th><th>Operação</th><th class="num">Qtd.</th><th>Produto</th>
+            <th>Documento</th><th>De</th><th>Para</th>
           </tr>
         </thead>
         <tbody id="tabela-historico">
-          <tr><td colspan="6" class="vazio">Carregando…</td></tr>
+          <tr><td colspan="7" class="vazio">Carregando…</td></tr>
         </tbody>
       </table>
     </div>
@@ -147,7 +215,6 @@
 </main>
 
 <div id="toast" class="toast hidden"></div>
-
 <script src="script.js"></script>
 </body>
 </html>
